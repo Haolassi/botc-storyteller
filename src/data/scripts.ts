@@ -1,0 +1,35 @@
+import type { Script } from "@/types/game";
+
+export const scripts: Script[] = [
+  {
+    id: "trouble_brewing",
+    nameZh: "暗流涌动",
+    nameEn: "Trouble Brewing",
+    minPlayers: 5,
+    maxPlayers: 15,
+    characterIds: [
+      "washerwoman",
+      "librarian",
+      "investigator",
+      "chef",
+      "empath",
+      "fortune_teller",
+      "undertaker",
+      "monk",
+      "ravenkeeper",
+      "virgin",
+      "slayer",
+      "soldier",
+      "mayor",
+      "butler",
+      "drunk",
+      "recluse",
+      "saint",
+      "poisoner",
+      "spy",
+      "baron",
+      "scarlet_woman",
+      "imp",
+    ],
+  },
+];
