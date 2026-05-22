@@ -21,7 +21,6 @@ export const daySubPhaseLabels: Record<DaySubPhase, string> = {
   speeches: "顺序发言",
   open_discussion: "大公聊",
   nomination: "提名",
-  execution: "处决",
 };
 
 export const winningTeamLabels: Record<Exclude<WinningTeam, null>, string> = {
@@ -121,15 +120,22 @@ export function applyWinCondition(game: Game): Game {
   });
 }
 
-export function markPendingExecutionDeathAtDusk(game: Game): Game {
+export function executeCurrentExecutionCandidate(game: Game): Game {
   const pendingDeathPlayerId = game.executionState.pendingDeathPlayerId;
 
   if (!pendingDeathPlayerId) {
-    return addGameLog(game, {
-      type: "phase_change",
-      title: "黄昏阶段",
-      description: "本次黄昏没有待处决死亡的玩家。",
-    });
+    return game;
+  }
+
+  if (game.executionState.executedPlayerId === pendingDeathPlayerId) {
+    return {
+      ...game,
+      executionState: {
+        ...game.executionState,
+        pendingDeathPlayerId: undefined,
+      },
+      updatedAt: new Date().toISOString(),
+    };
   }
 
   const targetPlayer = game.players.find(
@@ -158,12 +164,13 @@ export function markPendingExecutionDeathAtDusk(game: Game): Game {
 
   nextGame = addGameLog(nextGame, {
     type: "player_executed",
-    title: "处决生效",
+    title: "黄昏处决",
     description: targetPlayer
-      ? `${targetPlayer.displayName} 在黄昏死亡。`
-      : "一名待处决玩家在黄昏死亡。",
+      ? `${targetPlayer.displayName} 被处决并死亡。`
+      : "一名待处决玩家被处决并死亡。",
     payload: {
       playerId: pendingDeathPlayerId,
+      playerName: targetPlayer?.displayName,
     },
   });
 
@@ -181,17 +188,17 @@ export function enterDusk(game: Game): Game {
   nextGame = addGameLog(nextGame, {
     type: "phase_change",
     title: `进入第 ${game.currentDay} 天黄昏`,
+    description:
+      game.currentDay === 0
+        ? "第 0 天黄昏不会发生处决死亡。"
+        : "黄昏开始，若有人在处决台上，将立即死亡。",
   });
 
   if (game.currentDay === 0) {
-    return addGameLog(nextGame, {
-      type: "phase_change",
-      title: "第 0 天黄昏",
-      description: "第 0 天黄昏不会发生处决死亡。",
-    });
+    return nextGame;
   }
 
-  return markPendingExecutionDeathAtDusk(nextGame);
+  return executeCurrentExecutionCandidate(nextGame);
 }
 
 export function enterNight(game: Game): Game {
@@ -218,7 +225,8 @@ export function enterNight(game: Game): Game {
 }
 
 export function enterDay(game: Game): Game {
-  const nextDay = game.currentDay === 0 ? 1 : game.currentDay;
+  const nextDay =
+    game.currentPhase === "night" ? game.currentDay + 1 : Math.max(1, game.currentDay);
 
   const nextGame: Game = {
     ...game,
@@ -258,6 +266,169 @@ export function setDaySubPhase(game: Game, subPhase: DaySubPhase): Game {
   });
 }
 
+export function advanceGamePhase(game: Game): Game {
+  if (game.currentPhase === "ended") {
+    return game;
+  }
+
+  if (game.currentPhase === "dusk") {
+    return enterNight(game);
+  }
+
+  if (game.currentPhase === "night") {
+    return enterDay(game);
+  }
+
+  if (game.currentPhase === "day") {
+    if (game.currentDaySubPhase === "private_chat") {
+      return setDaySubPhase(game, "speeches");
+    }
+
+    if (game.currentDaySubPhase === "speeches") {
+      return setDaySubPhase(game, "open_discussion");
+    }
+
+    if (game.currentDaySubPhase === "open_discussion") {
+      return setDaySubPhase(game, "nomination");
+    }
+
+    if (game.currentDaySubPhase === "nomination") {
+      return enterDusk(game);
+    }
+
+    return setDaySubPhase(game, "private_chat");
+  }
+
+  return game;
+}
+
+export function retreatGamePhase(game: Game): Game {
+  if (game.currentPhase === "ended") {
+    return game;
+  }
+
+  const now = new Date().toISOString();
+
+  if (game.currentPhase === "day") {
+    if (game.currentDaySubPhase === "private_chat") {
+      return addGameLog(
+        {
+          ...game,
+          currentPhase: "night",
+          currentDaySubPhase: null,
+          executionState: {
+            day: game.currentDay,
+            nominations: [],
+            usedNominatorPlayerIds: [],
+            usedNomineePlayerIds: [],
+          },
+          updatedAt: now,
+        },
+        {
+          type: "manual_note",
+          title: "回退阶段",
+          description: "从私聊阶段回退到夜晚，并清空本日提名状态。",
+        },
+      );
+    }
+
+    if (game.currentDaySubPhase === "speeches") {
+      return addGameLog(
+        {
+          ...game,
+          currentDaySubPhase: "private_chat",
+          updatedAt: now,
+        },
+        {
+          type: "manual_note",
+          title: "回退阶段",
+          description: "从顺序发言回退到私聊。",
+        },
+      );
+    }
+
+    if (game.currentDaySubPhase === "open_discussion") {
+      return addGameLog(
+        {
+          ...game,
+          currentDaySubPhase: "speeches",
+          updatedAt: now,
+        },
+        {
+          type: "manual_note",
+          title: "回退阶段",
+          description: "从大公聊回退到顺序发言。",
+        },
+      );
+    }
+
+    if (game.currentDaySubPhase === "nomination") {
+      return addGameLog(
+        {
+          ...game,
+          currentDaySubPhase: "open_discussion",
+          executionState: {
+            day: game.currentDay,
+            nominations: [],
+            usedNominatorPlayerIds: [],
+            usedNomineePlayerIds: [],
+          },
+          updatedAt: now,
+        },
+        {
+          type: "manual_note",
+          title: "回退阶段",
+          description: "从提名阶段回退到大公聊，并清空本日提名状态。",
+        },
+      );
+    }
+  }
+
+  if (game.currentPhase === "night") {
+    return addGameLog(
+      {
+        ...game,
+        currentPhase: "dusk",
+        currentDaySubPhase: null,
+        nightActionState: {
+          day: game.currentDay,
+          currentStepIndex: 0,
+          completedStepIds: [],
+        },
+        updatedAt: now,
+      },
+      {
+        type: "manual_note",
+        title: "回退阶段",
+        description: "从夜晚回退到黄昏，并清空本夜行动状态。",
+      },
+    );
+  }
+
+  if (game.currentPhase === "dusk") {
+    if (game.currentDay <= 0) {
+      return game;
+    }
+
+    return addGameLog(
+      {
+        ...game,
+        currentPhase: "day",
+        currentDaySubPhase: "nomination",
+        updatedAt: now,
+      },
+      {
+        type: "manual_note",
+        title: "回退阶段",
+        description:
+          "从黄昏回退到提名阶段。已发生的死亡状态不会被自动撤销。",
+      },
+    );
+  }
+
+  return game;
+}
+
 export function finishDayAndEnterDusk(game: Game): Game {
   return enterDusk({
     ...game,
@@ -266,7 +437,10 @@ export function finishDayAndEnterDusk(game: Game): Game {
   });
 }
 
-export function endGameManually(game: Game, winningTeam: Exclude<WinningTeam, null>): Game {
+export function endGameManually(
+  game: Game,
+  winningTeam: Exclude<WinningTeam, null>,
+): Game {
   const nextGame: Game = {
     ...game,
     status: "finished",

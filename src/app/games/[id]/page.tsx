@@ -14,18 +14,15 @@ import {
   type SpeechDirection,
 } from "@/lib/dayTools";
 import {
+  advanceGamePhase,
   applyWinCondition,
   daySubPhaseLabels,
   endGameManually,
-  enterDay,
-  enterDusk,
-  enterNight,
-  finishDayAndEnterDusk,
   getAlivePlayerCount,
   getMaxNominations,
   getRequiredVotes,
   phaseLabels,
-  setDaySubPhase,
+  retreatGamePhase,
   winningTeamLabels,
 } from "@/lib/gameFlow";
 import { getCharacterById, getScriptById } from "@/lib/gameData";
@@ -45,7 +42,7 @@ import {
   getNightProgress,
   resetNightActions,
 } from "@/lib/nightActions";
-import type { DaySubPhase, Game, GamePlayer } from "@/types/game";
+import type { Game, GamePlayer } from "@/types/game";
 
 const alignmentLabels = {
   good: "善良",
@@ -62,10 +59,6 @@ function getSeatPosition(index: number, total: number) {
     left: `${x}%`,
     top: `${y}%`,
   };
-}
-
-function daySubPhaseButtonLabel(subPhase: DaySubPhase): string {
-  return daySubPhaseLabels[subPhase];
 }
 
 export default function GameDetailPage() {
@@ -101,6 +94,11 @@ export default function GameDetailPage() {
     [],
   );
 
+  function updateGame(nextGame: Game) {
+    setGame(nextGame);
+    saveLocalGame(nextGame);
+  }
+
   useEffect(() => {
     if (!gameId) {
       return;
@@ -123,6 +121,16 @@ export default function GameDetailPage() {
       setPrivateChatSecondsRemaining((current) => {
         if (current <= 1) {
           setIsPrivateChatTimerRunning(false);
+
+          if (
+            game?.currentPhase === "day" &&
+            game.currentDaySubPhase === "private_chat"
+          ) {
+            queueMicrotask(() => {
+              updateGame(advanceGamePhase(game));
+            });
+          }
+
           return 0;
         }
 
@@ -133,7 +141,7 @@ export default function GameDetailPage() {
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [isPrivateChatTimerRunning]);
+  }, [game, isPrivateChatTimerRunning]);
 
   useEffect(() => {
     if (!isOpenDiscussionTimerRunning) {
@@ -144,6 +152,16 @@ export default function GameDetailPage() {
       setOpenDiscussionSecondsRemaining((current) => {
         if (current <= 1) {
           setIsOpenDiscussionTimerRunning(false);
+
+          if (
+            game?.currentPhase === "day" &&
+            game.currentDaySubPhase === "open_discussion"
+          ) {
+            queueMicrotask(() => {
+              updateGame(advanceGamePhase(game));
+            });
+          }
+
           return 0;
         }
 
@@ -154,7 +172,7 @@ export default function GameDetailPage() {
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [isOpenDiscussionTimerRunning]);
+  }, [game, isOpenDiscussionTimerRunning]);
 
   const script = game ? getScriptById(game.scriptId) : undefined;
 
@@ -169,11 +187,6 @@ export default function GameDetailPage() {
   const alivePlayers = useMemo(() => {
     return sortedPlayers.filter((player) => player.isAlive);
   }, [sortedPlayers]);
-
-  function updateGame(nextGame: Game) {
-    setGame(nextGame);
-    saveLocalGame(nextGame);
-  }
 
   function updatePlayer(
     playerId: string,
@@ -194,45 +207,20 @@ export default function GameDetailPage() {
     updateGame(nextGame);
   }
 
-  function handleEnterDusk() {
+  function handleAdvancePhase() {
     if (!game) {
       return;
     }
 
-    updateGame(enterDusk(game));
+    updateGame(advanceGamePhase(game));
   }
 
-  function handleEnterNight() {
+  function handleRetreatPhase() {
     if (!game) {
       return;
     }
 
-    updateGame(enterNight(game));
-    setNightActionNote("");
-  }
-
-  function handleEnterDay() {
-    if (!game) {
-      return;
-    }
-
-    updateGame(enterDay(game));
-  }
-
-  function handleSetDaySubPhase(subPhase: DaySubPhase) {
-    if (!game) {
-      return;
-    }
-
-    updateGame(setDaySubPhase(game, subPhase));
-  }
-
-  function handleFinishDay() {
-    if (!game) {
-      return;
-    }
-
-    updateGame(finishDayAndEnterDusk(game));
+    updateGame(retreatGamePhase(game));
   }
 
   function handleManualWin(winningTeam: "good" | "evil") {
@@ -625,7 +613,7 @@ export default function GameDetailPage() {
                 </div>
               ) : (
                 <div className="rounded-2xl bg-gray-50 p-4 text-sm text-gray-600">
-                  本夜行动已全部完成。可以进入白天阶段。
+                  本夜行动已全部完成。点击右侧“下一阶段”进入白天。
                 </div>
               )}
 
@@ -671,7 +659,7 @@ export default function GameDetailPage() {
               <div className="mb-5">
                 <h2 className="text-xl font-semibold">白天工具</h2>
                 <p className="mt-1 text-sm text-gray-500">
-                  用于控制私聊、顺序发言和大公聊。操作会写入日志。
+                  用于控制私聊、顺序发言和大公聊。私聊和大公聊计时结束后会自动进入下一阶段。
                 </p>
               </div>
 
@@ -843,13 +831,13 @@ export default function GameDetailPage() {
             <div className="mb-5">
               <h2 className="text-xl font-semibold">提名与投票</h2>
               <p className="mt-1 text-sm text-gray-500">
-                当前规则：存活玩家可提名；提名者每天只能提名一次；被提名者每天只能被提名一次。
+                当前规则：存活玩家可提名；提名者每天只能提名一次；被提名者每天只能被提名一次。提名阶段结束后，点击“下一阶段”会进入黄昏并自动执行处决。
               </p>
             </div>
 
             {!isNominationPhase ? (
               <div className="rounded-xl bg-gray-50 p-4 text-sm text-gray-600">
-                请先进入：白天 → 提名阶段。
+                请先通过“下一阶段”进入：白天 → 提名阶段。
               </div>
             ) : (
               <div className="grid gap-5 lg:grid-cols-[1fr_1fr]">
@@ -964,7 +952,7 @@ export default function GameDetailPage() {
 
                   {executionCandidate && executionCandidatePlayer ? (
                     <div className="mt-4 rounded-xl bg-white p-4 text-sm">
-                      <div className="text-gray-500">当前可能被处决</div>
+                      <div className="text-gray-500">当前黄昏将被处决</div>
                       <div className="mt-1 text-lg font-semibold">
                         {executionCandidatePlayer.displayName}
                       </div>
@@ -973,7 +961,7 @@ export default function GameDetailPage() {
                         {executionCandidate.requiredVotes}
                       </div>
                       <p className="mt-3 text-xs leading-5 text-gray-500">
-                        该玩家会在进入黄昏时死亡。若需要取消今日处决，可以点击下方按钮。
+                        该玩家会在点击“下一阶段”进入黄昏时立即死亡。若需要取消今日处决，可以点击下方按钮。
                       </p>
                       <button
                         type="button"
@@ -1183,61 +1171,34 @@ export default function GameDetailPage() {
           <div className="mt-5 space-y-3">
             <button
               type="button"
-              onClick={handleEnterDusk}
+              onClick={handleAdvancePhase}
               disabled={game.currentPhase === "ended"}
-              className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 disabled:opacity-40"
-            >
-              进入黄昏
-            </button>
-
-            <button
-              type="button"
-              onClick={handleEnterNight}
-              disabled={game.currentPhase === "ended"}
-              className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 disabled:opacity-40"
-            >
-              进入夜晚
-            </button>
-
-            <button
-              type="button"
-              onClick={handleEnterDay}
-              disabled={game.currentPhase === "ended"}
-              className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 disabled:opacity-40"
-            >
-              进入白天
-            </button>
-
-            <div className="my-4 border-t border-gray-200" />
-
-            {(
-              [
-                "private_chat",
-                "speeches",
-                "open_discussion",
-                "nomination",
-                "execution",
-              ] as DaySubPhase[]
-            ).map((subPhase) => (
-              <button
-                key={subPhase}
-                type="button"
-                onClick={() => handleSetDaySubPhase(subPhase)}
-                disabled={game.currentPhase !== "day"}
-                className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 disabled:opacity-40"
-              >
-                {daySubPhaseButtonLabel(subPhase)}
-              </button>
-            ))}
-
-            <button
-              type="button"
-              onClick={handleFinishDay}
-              disabled={game.currentPhase !== "day"}
               className="w-full rounded-xl bg-gray-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-40"
             >
-              结束白天，进入黄昏
+              下一阶段
             </button>
+
+            <button
+              type="button"
+              onClick={handleRetreatPhase}
+              disabled={game.currentPhase === "ended"}
+              className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 disabled:opacity-40"
+            >
+              回退阶段
+            </button>
+
+            <div className="rounded-xl bg-gray-50 p-3 text-xs leading-5 text-gray-600">
+              <div className="font-medium text-gray-700">当前流程</div>
+              <div className="mt-1">
+                第 {game.currentDay} 天 · {phaseLabels[game.currentPhase]}
+                {game.currentDaySubPhase
+                  ? ` · ${daySubPhaseLabels[game.currentDaySubPhase]}`
+                  : ""}
+              </div>
+              <div className="mt-2">
+                私聊和大公聊计时结束后会自动进入下一阶段；也可以手动点击“下一阶段”。
+              </div>
+            </div>
 
             <div className="my-4 border-t border-gray-200" />
 

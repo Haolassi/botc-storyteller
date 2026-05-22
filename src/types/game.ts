@@ -67,8 +67,7 @@ export type DaySubPhase =
   | "private_chat"
   | "speeches"
   | "open_discussion"
-  | "nomination"
-  | "execution";
+  | "nomination";
 
 export type WinningTeam = "good" | "evil" | null;
 
