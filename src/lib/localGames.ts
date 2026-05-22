@@ -24,6 +24,7 @@ export function normalizeGame(rawGame: Partial<Game>): Game {
     currentPhase: rawGame.currentPhase ?? "dusk",
     currentDaySubPhase: rawGame.currentDaySubPhase ?? null,
     winningTeam: rawGame.winningTeam ?? null,
+    setupState: rawGame.setupState ?? {},
     executionState: rawGame.executionState ?? {
       day: currentDay,
       nominations: [],
@@ -35,9 +36,10 @@ export function normalizeGame(rawGame: Partial<Game>): Game {
       currentStepIndex: 0,
       completedStepIds: [],
     },
+    privateInfos: rawGame.privateInfos ?? [],
     logs: rawGame.logs ?? [],
     createdAt: rawGame.createdAt ?? now,
-    updatedAt: rawGame.updatedAt ?? now,
+    updatedAt: rawGame.updatedAt ?? rawGame.createdAt ?? now,
   };
 }
 
@@ -70,7 +72,10 @@ export function writeLocalGames(games: Game[]): void {
     return;
   }
 
-  window.localStorage.setItem(LOCAL_GAMES_KEY, JSON.stringify(games));
+  window.localStorage.setItem(
+    LOCAL_GAMES_KEY,
+    JSON.stringify(games.map((game) => normalizeGame(game))),
+  );
 }
 
 export function saveLocalGame(game: Game): void {
@@ -135,6 +140,7 @@ export function createInitialGameState(input: {
     currentPhase: "dusk",
     currentDaySubPhase: null,
     winningTeam: null,
+    setupState: {},
     executionState: {
       day: 0,
       nominations: [],
@@ -146,6 +152,7 @@ export function createInitialGameState(input: {
       currentStepIndex: 0,
       completedStepIds: [],
     },
+    privateInfos: [],
     logs: [],
     createdAt: now,
     updatedAt: now,

@@ -1,6 +1,9 @@
 import { getNightOrderSteps } from "@/data/nightOrder";
 import { addGameLog } from "@/lib/gameFlow";
-import { getCharacterById } from "@/lib/gameData";
+import {
+  getEffectiveActionCharacter,
+  getRealCharacter,
+} from "@/lib/registrationLogic";
 import type { Game } from "@/types/game";
 
 export function getNightPhaseForGame(game: Game) {
@@ -21,14 +24,9 @@ export function getActiveNightSteps(game: Game) {
     }
 
     return game.players.some((player) => {
-      const character = player.characterId
-        ? getCharacterById(player.characterId)
-        : undefined;
+      const effectiveCharacter = getEffectiveActionCharacter(player);
 
-      return (
-        player.isAlive &&
-        character?.id === step.characterId
-      );
+      return player.isAlive && effectiveCharacter?.id === step.characterId;
     });
   });
 }
@@ -53,6 +51,30 @@ export function getNightProgress(game: Game) {
   };
 }
 
+export function getNightActorForStep(game: Game, characterId?: string) {
+  if (!characterId) {
+    return undefined;
+  }
+
+  return game.players.find((player) => {
+    const effectiveCharacter = getEffectiveActionCharacter(player);
+
+    return player.isAlive && effectiveCharacter?.id === characterId;
+  });
+}
+
+export function isPlayerActingAsDrunk(game: Game, playerId: string): boolean {
+  const player = game.players.find((candidate) => candidate.id === playerId);
+
+  if (!player) {
+    return false;
+  }
+
+  const realCharacter = getRealCharacter(player);
+
+  return realCharacter?.id === "drunk" && Boolean(player.apparentCharacterId);
+}
+
 export function completeCurrentNightStep(
   game: Game,
   note?: string,
@@ -70,6 +92,12 @@ export function completeCurrentNightStep(
       description: "当前夜晚没有剩余行动步骤。",
     });
   }
+
+  const actor = getNightActorForStep(game, currentStep.characterId);
+  const isDrunkActing =
+    actor && currentStep.characterId
+      ? isPlayerActingAsDrunk(game, actor.id)
+      : false;
 
   const nextGame: Game = {
     ...game,
@@ -91,12 +119,16 @@ export function completeCurrentNightStep(
       ? note.trim()
       : currentStep.type === "system"
         ? "说书人完成了该系统夜晚步骤。"
-        : "说书人完成了该角色的夜晚行动处理。",
+        : isDrunkActing
+          ? "该行动由酒鬼的表面角色触发；其获得的信息不具备规则参考价值。"
+          : "说书人完成了该角色的夜晚行动处理。",
     payload: {
       stepId: currentStep.id,
       characterId: currentStep.characterId,
       stepType: currentStep.type,
       phase: currentStep.phase,
+      actorPlayerId: actor?.id,
+      isDrunkActing,
     },
   });
 }

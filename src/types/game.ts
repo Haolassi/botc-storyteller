@@ -124,6 +124,10 @@ export interface NightActionState {
   completedStepIds: string[];
 }
 
+export interface GameSetupState {
+  fortuneTellerRedHerringPlayerId?: string;
+}
+
 export interface GamePlayer {
   id: string;
   gameId: string;
@@ -131,9 +135,36 @@ export interface GamePlayer {
   displayName: string;
   userId?: string;
 
+  /**
+   * 真实角色。
+   * 酒鬼真实角色仍然是 drunk。
+   */
   characterId?: string;
+
+  /**
+   * 玩家以为自己是什么角色。
+   * 主要用于酒鬼。
+   */
   apparentCharacterId?: string;
+
+  /**
+   * 实际阵营。
+   */
   alignment?: Alignment;
+
+  /**
+   * 登记阵营。
+   * 主要用于陌客 Recluse。
+   * 如果未设置，默认按真实阵营登记。
+   */
+  registeredAlignment?: Alignment;
+
+  /**
+   * 登记角色。
+   * 主要用于陌客 Recluse。
+   * 如果未设置，默认按真实角色登记。
+   */
+  registeredCharacterId?: string;
 
   isAlive: boolean;
   isDrunk: boolean;
@@ -154,8 +185,10 @@ export interface Game {
 
   winningTeam: WinningTeam;
 
+  setupState: GameSetupState;
   executionState: ExecutionState;
   nightActionState: NightActionState;
+  privateInfos: PrivateInfo[];
   logs: GameLogEntry[];
 
   createdAt: string;

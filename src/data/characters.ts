@@ -25,7 +25,7 @@ export const characters: Character[] = [
     editions: ["trouble_brewing"],
     abilityCode: "INFO_TWO_PLAYERS_ONE_OUTSIDER",
     abilitySummaryZh:
-      "在你的首个夜晚，你会得知两名玩家和一个外来者角色：这两名玩家之一是该角色。或者你会得知没有外来者在场。",
+      "在你的首个夜晚，你会得知两名玩家和一个外来者角色：这两名玩家之一是该角色。（或者你会得知没有外来者在场）",
     timing: ["first_night"],
     interactionType: "storyteller_inputs_private_info",
     requiresStorytellerInput: true,
@@ -40,7 +40,7 @@ export const characters: Character[] = [
     alignment: "good",
     editions: ["trouble_brewing"],
     abilityCode: "INFO_TWO_PLAYERS_ONE_MINION",
-    abilitySummaryZh: "在你的首个夜晚，你会得知两名玩家和一个爪牙角色：这两名玩家之一是该角色。或者你会得知没有爪牙在场。",
+    abilitySummaryZh: "在你的首个夜晚，你会得知两名玩家和一个爪牙角色：这两名玩家之一是该角色。（或者你会得知没有爪牙在场）",
     timing: ["first_night"],
     interactionType: "storyteller_inputs_private_info",
     requiresStorytellerInput: true,

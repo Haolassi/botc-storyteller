@@ -35,11 +35,17 @@ import {
   getRemainingNominationCount,
 } from "@/lib/nominations";
 import {
+  getApparentCharacter,
+  getRealCharacter,
+} from "@/lib/registrationLogic";
+import {
   completeCurrentNightStep,
   getActiveNightSteps,
   getCurrentNightStep,
+  getNightActorForStep,
   getNightPhaseForGame,
   getNightProgress,
+  isPlayerActingAsDrunk,
   resetNightActions,
 } from "@/lib/nightActions";
 import type { Game, GamePlayer } from "@/types/game";
@@ -418,6 +424,26 @@ export default function GameDetailPage() {
   const nightSteps = getActiveNightSteps(game);
   const currentNightStep = getCurrentNightStep(game);
   const nightProgress = getNightProgress(game);
+const currentNightCharacter = currentNightStep?.characterId
+  ? getCharacterById(currentNightStep.characterId)
+  : undefined;
+
+const currentNightActorPlayer = getNightActorForStep(
+  game,
+  currentNightStep?.characterId,
+);
+
+const currentNightActorIsDrunk = currentNightActorPlayer
+  ? isPlayerActingAsDrunk(game, currentNightActorPlayer.id)
+  : false;
+
+const currentNightActorRealCharacter = currentNightActorPlayer
+  ? getRealCharacter(currentNightActorPlayer)
+  : undefined;
+
+const currentNightActorApparentCharacter = currentNightActorPlayer
+  ? getApparentCharacter(currentNightActorPlayer)
+  : undefined;
 
   return (
     <main className="min-h-screen w-full px-4 py-8 sm:px-6 lg:px-8 xl:px-10">
@@ -594,6 +620,46 @@ export default function GameDetailPage() {
                       {currentNightStep.labelEn}
                     </div>
                   ) : null}
+{currentNightCharacter ? (
+  <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4 text-sm">
+    <div className="font-medium text-gray-800">
+      当前角色：{currentNightCharacter.nameZh} / {currentNightCharacter.nameEn}
+    </div>
+
+    {currentNightActorPlayer ? (
+      <div className="mt-2 space-y-2 text-xs text-gray-600">
+        <div>
+          行动玩家：{currentNightActorPlayer.seatNumber}.{" "}
+          {currentNightActorPlayer.displayName}
+        </div>
+
+        {currentNightActorIsDrunk ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 leading-5 text-amber-800">
+            该玩家真实角色是酒鬼，当前按照表面角色{" "}
+            {currentNightActorApparentCharacter
+              ? `${currentNightActorApparentCharacter.nameZh} / ${currentNightActorApparentCharacter.nameEn}`
+              : "未知角色"}{" "}
+            行动。其获得的信息不具备规则参考价值，可由说书人任意给出。
+          </div>
+        ) : null}
+
+        {currentNightActorRealCharacter &&
+        currentNightActorApparentCharacter &&
+        currentNightActorRealCharacter.id !==
+          currentNightActorApparentCharacter.id ? (
+          <div>
+            真实角色：{currentNightActorRealCharacter.nameZh} /{" "}
+            {currentNightActorRealCharacter.nameEn}
+          </div>
+        ) : null}
+      </div>
+    ) : (
+      <div className="mt-2 text-xs text-red-600">
+        未找到当前角色对应的存活玩家。可能是该玩家已死亡，或角色分配已变化。
+      </div>
+    )}
+  </div>
+) : null}
 
                   <textarea
                     value={nightActionNote}
