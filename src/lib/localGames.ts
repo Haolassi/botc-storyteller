@@ -24,7 +24,15 @@ export function normalizeGame(rawGame: Partial<Game>): Game {
     currentPhase: rawGame.currentPhase ?? "dusk",
     currentDaySubPhase: rawGame.currentDaySubPhase ?? null,
     winningTeam: rawGame.winningTeam ?? null,
-    setupState: rawGame.setupState ?? {},
+    setupState: {
+      fortuneTellerRedHerringPlayerId:
+        rawGame.setupState?.fortuneTellerRedHerringPlayerId,
+      usedSlayerPlayerIds: rawGame.setupState?.usedSlayerPlayerIds ?? [],
+      butlerMasterPlayerIds: rawGame.setupState?.butlerMasterPlayerIds ?? {},
+      triggeredVirginPlayerIds:
+        rawGame.setupState?.triggeredVirginPlayerIds ?? [],
+      usedDeadVotePlayerIds: rawGame.setupState?.usedDeadVotePlayerIds ?? [],
+    },
     executionState: rawGame.executionState ?? {
       day: currentDay,
       nominations: [],

@@ -6,6 +6,23 @@ import {
 } from "@/lib/registrationLogic";
 import type { Game } from "@/types/game";
 
+function wasRavenkeeperKilledTonight(game: Game): boolean {
+  return game.logs.some(
+    (log) =>
+      log.type === "player_death" &&
+      log.phase === "night" &&
+      log.day === game.currentDay &&
+      game.players.some((player) => {
+        const character = getRealCharacter(player);
+
+        return (
+          player.id === log.payload?.playerId &&
+          character?.id === "ravenkeeper"
+        );
+      }),
+  );
+}
+
 export function getNightPhaseForGame(game: Game) {
   return game.currentDay === 0 ? "first_night" : "other_night";
 }
@@ -25,6 +42,12 @@ export function getActiveNightSteps(game: Game) {
 
     return game.players.some((player) => {
       const effectiveCharacter = getEffectiveActionCharacter(player);
+
+      if (step.characterId === "ravenkeeper") {
+        const realCharacter = getRealCharacter(player);
+
+        return realCharacter?.id === "ravenkeeper" && wasRavenkeeperKilledTonight(game);
+      }
 
       return player.isAlive && effectiveCharacter?.id === step.characterId;
     });
@@ -58,6 +81,14 @@ export function getNightActorForStep(game: Game, characterId?: string) {
 
   return game.players.find((player) => {
     const effectiveCharacter = getEffectiveActionCharacter(player);
+
+    if (characterId === "ravenkeeper") {
+      const realCharacter = getRealCharacter(player);
+
+      if (realCharacter?.id === "ravenkeeper" && wasRavenkeeperKilledTonight(game)) {
+        return true;
+      }
+    }
 
     return player.isAlive && effectiveCharacter?.id === characterId;
   });

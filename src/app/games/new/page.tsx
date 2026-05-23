@@ -121,10 +121,6 @@ export default function NewGamePage() {
   const [drunkApparentCharacterIds, setDrunkApparentCharacterIds] = useState<
     Record<number, string>
   >({});
-  const [recluseRegisteredAlignments, setRecluseRegisteredAlignments] =
-    useState<Record<number, Alignment>>({});
-  const [recluseRegisteredCharacterIds, setRecluseRegisteredCharacterIds] =
-    useState<Record<number, string>>({});
   const [fortuneTellerRedHerringSeat, setFortuneTellerRedHerringSeat] =
     useState<number | null>(null);
 
@@ -277,29 +273,6 @@ export default function NewGamePage() {
       return next;
     });
 
-    setRecluseRegisteredAlignments((current) => {
-      const next: Record<number, Alignment> = {};
-
-      for (let seatNumber = 1; seatNumber <= nextCount; seatNumber += 1) {
-        if (current[seatNumber]) {
-          next[seatNumber] = current[seatNumber];
-        }
-      }
-
-      return next;
-    });
-
-    setRecluseRegisteredCharacterIds((current) => {
-      const next: Record<number, string> = {};
-
-      for (let seatNumber = 1; seatNumber <= nextCount; seatNumber += 1) {
-        if (current[seatNumber]) {
-          next[seatNumber] = current[seatNumber];
-        }
-      }
-
-      return next;
-    });
   }
 
   function handleRoleChange(seatNumber: number, roleId: string) {
@@ -318,19 +291,6 @@ export default function NewGamePage() {
       });
     }
 
-    if (nextRole?.id !== "recluse") {
-      setRecluseRegisteredAlignments((current) => {
-        const next = { ...current };
-        delete next[seatNumber];
-        return next;
-      });
-
-      setRecluseRegisteredCharacterIds((current) => {
-        const next = { ...current };
-        delete next[seatNumber];
-        return next;
-      });
-    }
   }
 
   function handleManualNameChange(seatNumber: number, name: string) {
@@ -345,26 +305,6 @@ export default function NewGamePage() {
     characterId: string,
   ) {
     setDrunkApparentCharacterIds((current) => ({
-      ...current,
-      [seatNumber]: characterId,
-    }));
-  }
-
-  function handleRecluseRegisteredAlignmentChange(
-    seatNumber: number,
-    alignment: Alignment,
-  ) {
-    setRecluseRegisteredAlignments((current) => ({
-      ...current,
-      [seatNumber]: alignment,
-    }));
-  }
-
-  function handleRecluseRegisteredCharacterChange(
-    seatNumber: number,
-    characterId: string,
-  ) {
-    setRecluseRegisteredCharacterIds((current) => ({
       ...current,
       [seatNumber]: characterId,
     }));
@@ -386,16 +326,6 @@ export default function NewGamePage() {
 
       if (role?.id === "drunk" && !drunkApparentCharacterIds[seatNumber]) {
         return `座位 ${seatNumber} 是酒鬼，请为其选择一个表面镇民角色。`;
-      }
-
-      if (role?.id === "recluse") {
-        if (!recluseRegisteredAlignments[seatNumber]) {
-          return `座位 ${seatNumber} 是陌客，请选择其登记阵营。`;
-        }
-
-        if (!recluseRegisteredCharacterIds[seatNumber]) {
-          return `座位 ${seatNumber} 是陌客，请选择其登记角色。`;
-        }
       }
     }
 
@@ -503,14 +433,6 @@ export default function NewGamePage() {
             ? drunkApparentCharacterIds[seatNumber]
             : undefined,
         alignment: character?.alignment,
-        registeredAlignment:
-          characterId === "recluse"
-            ? recluseRegisteredAlignments[seatNumber]
-            : undefined,
-        registeredCharacterId:
-          characterId === "recluse"
-            ? recluseRegisteredCharacterIds[seatNumber]
-            : undefined,
         isAlive: true,
         isDrunk: false,
         isPoisoned: false,
@@ -550,7 +472,7 @@ export default function NewGamePage() {
         <p className="text-sm text-gray-500">Games</p>
         <h1 className="mt-1 text-3xl font-bold tracking-tight">创建对局</h1>
         <p className="mt-2 text-sm text-gray-600">
-          按说书人流程创建对局：选择板子、确定人数、分配角色、分配座位，并设置酒鬼、陌客、占卜师红鲱鱼等开局信息。
+          按说书人流程创建对局：选择板子、确定人数、分配角色和座位，并设置酒鬼表面角色、占卜师红鲱鱼等开局信息。
         </p>
       </div>
 
@@ -656,9 +578,9 @@ export default function NewGamePage() {
 
         <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="mb-5">
-            <h2 className="text-lg font-semibold">2. 座位、角色与开局登记</h2>
+            <h2 className="text-lg font-semibold">2. 座位、角色与开局信息</h2>
             <p className="mt-1 text-sm text-gray-500">
-              系统根据人数生成座位。说书人需要为每个座位分配一个真实角色，并为特殊角色设置开局登记信息。
+              系统根据人数生成座位。说书人需要为每个座位分配真实角色，并填写玩家名。
             </p>
           </div>
 
@@ -738,7 +660,7 @@ export default function NewGamePage() {
                         酒鬼表面角色
                       </label>
                       <p className="mt-1 text-xs leading-5 text-amber-700">
-                        酒鬼真实角色仍为酒鬼，但游戏过程中会按照此镇民角色被唤醒并获得信息。
+                        酒鬼真实角色仍为酒鬼，但游戏过程中会按这个表面镇民角色被唤醒并获得信息。
                       </p>
                       <select
                         value={drunkApparentCharacterIds[seatNumber] ?? ""}
@@ -752,56 +674,6 @@ export default function NewGamePage() {
                       >
                         <option value="">请选择表面镇民</option>
                         {townsfolkCharacters.map((character) => (
-                          <option key={character.id} value={character.id}>
-                            {character.nameZh} / {character.nameEn}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  ) : null}
-
-                  {role?.id === "recluse" ? (
-                    <div className="mt-4 rounded-xl border border-purple-200 bg-purple-50 p-3">
-                      <div className="text-xs font-medium text-purple-800">
-                        陌客登记设置
-                      </div>
-                      <p className="mt-1 text-xs leading-5 text-purple-700">
-                        陌客可以被登记为邪恶阵营、爪牙或恶魔。该设置在开局确定，中途不应修改。
-                      </p>
-
-                      <label className="mt-3 block text-xs font-medium text-purple-800">
-                        登记阵营
-                      </label>
-                      <select
-                        value={recluseRegisteredAlignments[seatNumber] ?? ""}
-                        onChange={(event) =>
-                          handleRecluseRegisteredAlignmentChange(
-                            seatNumber,
-                            event.target.value as Alignment,
-                          )
-                        }
-                        className="mt-2 w-full rounded-xl border border-purple-200 bg-white px-3 py-2 text-sm outline-none focus:border-purple-500"
-                      >
-                        <option value="">请选择登记阵营</option>
-                        <option value="good">善良</option>
-                        <option value="evil">邪恶</option>
-                      </select>
-
-                      <label className="mt-3 block text-xs font-medium text-purple-800">
-                        登记角色
-                      </label>
-                      <select
-                        value={recluseRegisteredCharacterIds[seatNumber] ?? ""}
-                        onChange={(event) =>
-                          handleRecluseRegisteredCharacterChange(
-                            seatNumber,
-                            event.target.value,
-                          )
-                        }
-                        className="mt-2 w-full rounded-xl border border-purple-200 bg-white px-3 py-2 text-sm outline-none focus:border-purple-500"
-                      >
-                        <option value="">请选择登记角色</option>
-                        {scriptCharacters.map((character) => (
                           <option key={character.id} value={character.id}>
                             {character.nameZh} / {character.nameEn}
                           </option>
@@ -856,7 +728,7 @@ export default function NewGamePage() {
             </div>
           ) : (
             <p className="mt-5 text-sm text-gray-500">
-              当前为指定分配模式。请在中间的座位卡片中直接填写每个座位对应的玩家。
+              当前为指定分配模式。请在中间的座位卡片中填写每个座位对应的玩家。
             </p>
           )}
 
@@ -919,7 +791,7 @@ export default function NewGamePage() {
                 ))}
               </ul>
               <p className="mt-2 text-xs leading-5">
-                这是推荐配置提示，不会阻止创建对局。说书人可以自由设置板子配置。
+                这是推荐配置提示，不会阻止创建对局。说书人可以自由调整板子配置。
               </p>
             </div>
           ) : null}

@@ -1,5 +1,12 @@
-import { addGameLog, getAlivePlayerCount, getRequiredVotes } from "@/lib/gameFlow";
+import {
+  addGameLog,
+  applyWinCondition,
+  enterDusk,
+  getAlivePlayerCount,
+  getRequiredVotes,
+} from "@/lib/gameFlow";
 import { createLocalId } from "@/lib/localGames";
+import { getRealCharacter, getRegisteredCharacter } from "@/lib/registrationLogic";
 import type { Game, GamePlayer, NominationRecord } from "@/types/game";
 
 export interface NominationResult {
@@ -124,10 +131,15 @@ export function createNomination(input: {
   }
 
   const uniqueVotePlayerIds = Array.from(new Set(votePlayerIds));
+  const usedDeadVotePlayerIds = game.setupState.usedDeadVotePlayerIds ?? [];
 
   const invalidVoter = uniqueVotePlayerIds.find((voterId) => {
     const voter = getPlayerById(game, voterId);
-    return !voter?.isAlive;
+    if (!voter) {
+      return true;
+    }
+
+    return !voter.isAlive && usedDeadVotePlayerIds.includes(voter.id);
   });
 
   if (invalidVoter) {
@@ -136,6 +148,12 @@ export function createNomination(input: {
       error: "投票者必须是存活玩家。",
     };
   }
+
+  const newlyUsedDeadVotePlayerIds = uniqueVotePlayerIds.filter((voterId) => {
+    const voter = getPlayerById(game, voterId);
+
+    return voter && !voter.isAlive && !usedDeadVotePlayerIds.includes(voter.id);
+  });
 
   const requiredVotes = getRequiredVotes(game);
   const voteCount = uniqueVotePlayerIds.length;
@@ -180,6 +198,13 @@ export function createNomination(input: {
         nomineePlayerId,
       ],
     },
+    setupState: {
+      ...game.setupState,
+      usedDeadVotePlayerIds: [
+        ...usedDeadVotePlayerIds,
+        ...newlyUsedDeadVotePlayerIds,
+      ],
+    },
     updatedAt: new Date().toISOString(),
   };
 
@@ -206,6 +231,64 @@ export function createNomination(input: {
       pendingDeathPlayerId,
     },
   });
+
+  const nomineeCharacter = getRealCharacter(nominee);
+  const nominatorRegisteredCharacter = getRegisteredCharacter(nominator);
+  const triggeredVirginPlayerIds =
+    nextGame.setupState.triggeredVirginPlayerIds ?? [];
+  const shouldTriggerVirgin =
+    nomineeCharacter?.id === "virgin" &&
+    nominatorRegisteredCharacter?.type === "townsfolk" &&
+    !nominee.isPoisoned &&
+    !triggeredVirginPlayerIds.includes(nominee.id);
+
+  if (shouldTriggerVirgin) {
+    nextGame = {
+      ...nextGame,
+      players: nextGame.players.map((player) =>
+        player.id === nominator.id
+          ? {
+              ...player,
+              isAlive: false,
+            }
+          : player,
+      ),
+      setupState: {
+        ...nextGame.setupState,
+        triggeredVirginPlayerIds: [...triggeredVirginPlayerIds, nominee.id],
+      },
+      executionState: {
+        ...nextGame.executionState,
+        executedPlayerId: nominator.id,
+        pendingDeathPlayerId: undefined,
+      },
+      updatedAt: new Date().toISOString(),
+    };
+
+    nextGame = addGameLog(nextGame, {
+      type: "player_executed",
+      title: "贞洁者触发",
+      description: `${nominee.displayName} 第一次被登记镇民提名，提名者 ${nominator.displayName} 立即被处决。`,
+      payload: {
+        virginPlayerId: nominee.id,
+        executedPlayerId: nominator.id,
+      },
+    });
+
+    nextGame = applyWinCondition(nextGame);
+
+    if (nextGame.currentPhase !== "ended") {
+      nextGame = enterDusk(nextGame);
+    }
+  }
+
+  if (
+    !shouldTriggerVirgin &&
+    isOnBlock &&
+    nextGame.currentPhase !== "ended"
+  ) {
+    nextGame = enterDusk(nextGame);
+  }
 
   return {
     game: nextGame,

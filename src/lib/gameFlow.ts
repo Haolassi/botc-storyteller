@@ -93,15 +93,84 @@ export function evaluateWinCondition(game: Game): WinningTeam {
   return null;
 }
 
-export function applyWinCondition(game: Game): Game {
-  const winningTeam = evaluateWinCondition(game);
+function applyScarletWomanReplacement(game: Game): Game {
+  const alivePlayers = game.players.filter((player) => player.isAlive);
+  const aliveDemonExists = alivePlayers.some((player) => {
+    const character = player.characterId
+      ? getCharacterById(player.characterId)
+      : undefined;
 
-  if (!winningTeam) {
+    return character?.type === "demon";
+  });
+
+  if (aliveDemonExists || alivePlayers.length < 5) {
+    return game;
+  }
+
+  const scarletWoman = alivePlayers.find((player) => {
+    const character = player.characterId
+      ? getCharacterById(player.characterId)
+      : undefined;
+
+    return character?.id === "scarlet_woman" && !player.isPoisoned;
+  });
+
+  if (!scarletWoman) {
     return game;
   }
 
   const nextGame: Game = {
     ...game,
+    players: game.players.map((player) =>
+      player.id === scarletWoman.id
+        ? {
+            ...player,
+            characterId: "imp",
+            alignment: "evil",
+            registeredAlignment: "evil",
+            registeredCharacterId: "imp",
+          }
+        : player,
+    ),
+    updatedAt: new Date().toISOString(),
+  };
+
+  return addGameLog(nextGame, {
+    type: "night_action",
+    title: "红唇女郎变成小恶魔",
+    description:
+      "恶魔死亡且场上仍有至少五名存活玩家，系统将存活且未中毒的红唇女郎改为小恶魔。",
+    payload: {
+      replacementPlayerId: scarletWoman.id,
+    },
+  });
+}
+
+function clearPoisonedPlayers(game: Game): Game {
+  if (!game.players.some((player) => player.isPoisoned)) {
+    return game;
+  }
+
+  return {
+    ...game,
+    players: game.players.map((player) => ({
+      ...player,
+      isPoisoned: false,
+    })),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export function applyWinCondition(game: Game): Game {
+  const replacementGame = applyScarletWomanReplacement(game);
+  const winningTeam = evaluateWinCondition(replacementGame);
+
+  if (!winningTeam) {
+    return replacementGame;
+  }
+
+  const nextGame: Game = {
+    ...replacementGame,
     status: "finished",
     currentPhase: "ended",
     currentDaySubPhase: null,
@@ -174,6 +243,32 @@ export function executeCurrentExecutionCandidate(game: Game): Game {
     },
   });
 
+  const targetCharacter = targetPlayer?.characterId
+    ? getCharacterById(targetPlayer.characterId)
+    : undefined;
+
+  if (targetCharacter?.id === "saint" && !targetPlayer?.isPoisoned) {
+    return addGameLog(
+      {
+        ...nextGame,
+        status: "finished",
+        currentPhase: "ended",
+        currentDaySubPhase: null,
+        winningTeam: "evil",
+        updatedAt: new Date().toISOString(),
+      },
+      {
+        type: "win_condition",
+        title: "邪恶方胜利",
+        description: "圣徒被处决，邪恶阵营获胜。",
+        payload: {
+          winningTeam: "evil",
+          playerId: pendingDeathPlayerId,
+        },
+      },
+    );
+  }
+
   return applyWinCondition(nextGame);
 }
 
@@ -195,10 +290,45 @@ export function enterDusk(game: Game): Game {
   });
 
   if (game.currentDay === 0) {
-    return nextGame;
+    return clearPoisonedPlayers(nextGame);
   }
 
-  return executeCurrentExecutionCandidate(nextGame);
+  const alivePlayers = nextGame.players.filter((player) => player.isAlive);
+  const aliveMayor = alivePlayers.find((player) => {
+    const character = player.characterId
+      ? getCharacterById(player.characterId)
+      : undefined;
+
+    return character?.id === "mayor" && !player.isPoisoned;
+  });
+
+  if (!nextGame.executionState.pendingDeathPlayerId && aliveMayor && alivePlayers.length === 3) {
+    return addGameLog(
+      {
+        ...nextGame,
+        status: "finished",
+        currentPhase: "ended",
+        currentDaySubPhase: null,
+        winningTeam: "good",
+        updatedAt: new Date().toISOString(),
+      },
+      {
+        type: "win_condition",
+        title: "善良方胜利",
+        description: "仅剩三名存活玩家且白天无人被处决，镇长条件触发。",
+        payload: {
+          winningTeam: "good",
+          mayorPlayerId: aliveMayor.id,
+        },
+      },
+    );
+  }
+
+  const executedGame = executeCurrentExecutionCandidate(nextGame);
+
+  return executedGame.currentPhase === "ended"
+    ? executedGame
+    : clearPoisonedPlayers(executedGame);
 }
 
 export function enterNight(game: Game): Game {

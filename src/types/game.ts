@@ -77,6 +77,7 @@ export type GameLogType =
   | "player_executed"
   | "nomination"
   | "vote"
+  | "day_action"
   | "night_action"
   | "private_info"
   | "status_change"
@@ -126,6 +127,10 @@ export interface NightActionState {
 
 export interface GameSetupState {
   fortuneTellerRedHerringPlayerId?: string;
+  usedSlayerPlayerIds?: string[];
+  butlerMasterPlayerIds?: Record<string, string>;
+  triggeredVirginPlayerIds?: string[];
+  usedDeadVotePlayerIds?: string[];
 }
 
 export interface GamePlayer {
