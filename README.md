@@ -1,36 +1,70 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Storyteller Notes
 
-## Getting Started
+Version: `0.10.0`
 
-First, run the development server:
+Storyteller Notes is a local-first Next.js utility for running social deduction games as a storyteller aid. It is designed to support offline, in-person play: the app records the storyteller's private backend state and provides rule references, but the storyteller still makes the final ruling and decides what information to give.
+
+This project does not implement authentication, online multiplayer, a database, official artwork, or automatic full rules adjudication.
+
+## Current Features
+
+- Next.js App Router + TypeScript project structure.
+- Tailwind CSS and shadcn/ui setup.
+- Basic routes for scripts and games.
+- Built-in script data for Trouble Brewing / An Liu Yong Dong.
+- Global character library with scripts referencing character IDs.
+- Local game creation with player seats, character assignment, and saved games in `localStorage`.
+- Storyteller game view with round-table seats, player state, role information, alive/dead state, voting state, drunk/poison markers, and expandable player details.
+- Day flow support for private chat, speeches, open discussion, nomination, dusk, night, and game end.
+- Nomination, voting, execution, retreat, and reset helpers.
+- Night action helpers for key Trouble Brewing roles, including Poisoner, Monk, Imp, Empath, Fortune Teller, Undertaker, Butler, Ravenkeeper, Soldier, Mayor, Scarlet Woman, Saint, Virgin, Slayer, Drunk, Recluse, Spy, and Fortune Teller red herring handling.
+- Storyteller notes for day sub-phases.
+- Structured storyteller-only game logs for phase changes, night actions, information, status changes, nomination, vote, execution, death, ability events, manual notes, corrections, and system events.
+- Human-readable log timeline with filters and JSON export for later analysis.
+
+## Data Policy
+
+- Character ability summaries are short paraphrases only.
+- No official copyrighted long ability text is included.
+- No official artwork, icons, or assets are included.
+- Game data is stored locally in the browser through `localStorage`.
+
+## Development
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Start the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```text
+http://localhost:3000
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Run checks:
 
-## Learn More
+```bash
+npm run lint
+npm run build
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Version 0.10 Scope
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+The `0.10.0` version marks the first broadly usable local storyteller aid:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- Local script and game management.
+- Trouble Brewing role data and interaction helpers.
+- Usable storyteller game table.
+- Day/night phase flow.
+- Player state tracking.
+- Structured backend logs with readable timeline display and JSON export.
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Future versions may add broader script coverage, richer rule references, better log editing/correction UI, import/export for full games, and optional online collaboration.

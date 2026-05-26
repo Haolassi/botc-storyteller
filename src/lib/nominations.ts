@@ -1,7 +1,7 @@
 import {
   addGameLog,
+  advanceGamePhase,
   applyWinCondition,
-  enterDusk,
   getAlivePlayerCount,
   getRequiredVotes,
 } from "@/lib/gameFlow";
@@ -72,6 +72,29 @@ export function getHighestOnBlockNomination(
   return nominations
     .filter((nomination) => nomination.isOnBlock)
     .sort((a, b) => b.voteCount - a.voteCount)[0];
+}
+
+export function getUniqueExecutionCandidate(
+  nominations: NominationRecord[],
+): NominationRecord | undefined {
+  const onBlockNominations = nominations.filter(
+    (nomination) => nomination.isOnBlock,
+  );
+
+  if (onBlockNominations.length === 0) {
+    return undefined;
+  }
+
+  const highestVoteCount = Math.max(
+    ...onBlockNominations.map((nomination) => nomination.voteCount),
+  );
+  const tiedHighestNominations = onBlockNominations.filter(
+    (nomination) => nomination.voteCount === highestVoteCount,
+  );
+
+  return tiedHighestNominations.length === 1
+    ? tiedHighestNominations[0]
+    : undefined;
 }
 
 export function createNomination(input: {
@@ -174,14 +197,12 @@ export function createNomination(input: {
 
   const nominations = [...game.executionState.nominations, nomination];
 
-  const currentCandidate = getCurrentExecutionCandidate(game);
-  let pendingDeathPlayerId = game.executionState.pendingDeathPlayerId;
-
-  if (isOnBlock) {
-    if (!currentCandidate || voteCount > currentCandidate.voteCount) {
-      pendingDeathPlayerId = nomineePlayerId;
-    }
-  }
+  const previousExecutionCandidatePlayerId =
+    game.executionState.pendingDeathPlayerId;
+  const pendingDeathPlayerId =
+    getUniqueExecutionCandidate(nominations)?.nomineePlayerId;
+  const isCurrentExecutionCandidate = pendingDeathPlayerId === nomineePlayerId;
+  const nominationIndexOfDay = nominations.length;
 
   let nextGame: Game = {
     ...game,
@@ -215,16 +236,88 @@ export function createNomination(input: {
 
   nextGame = addGameLog(nextGame, {
     type: "nomination",
+    category: "nomination",
     title: `${nominator.displayName} 提名 ${nominee.displayName}`,
     description: isOnBlock
       ? `${nominee.displayName} 获得 ${voteCount} 票，达到 ${requiredVotes} 票门槛，上处决台。`
       : `${nominee.displayName} 获得 ${voteCount} 票，未达到 ${requiredVotes} 票门槛。`,
+    actorPlayerId: nominatorPlayerId,
+    targetPlayerIds: [nomineePlayerId, ...uniqueVotePlayerIds],
+    result: {
+      type: "number",
+      value: voteCount,
+    },
+    systemReference: {
+      summary: isCurrentExecutionCandidate
+        ? "本次提名产生唯一最高票处决候选。"
+        : isOnBlock
+          ? "本次提名达到门槛，但最高票平票或未成为唯一候选。"
+          : "本次提名未达到处决门槛。",
+      expectedResult: {
+        type: "boolean",
+        value: isCurrentExecutionCandidate,
+      },
+      relatedPlayerIds: [
+        nominatorPlayerId,
+        nomineePlayerId,
+        ...uniqueVotePlayerIds,
+      ],
+    },
+    metadata: {
+      nominationId: nomination.id,
+      nominationIndexOfDay,
+      nominatorPlayerId,
+      nomineePlayerId,
+      votePlayerIds: uniqueVotePlayerIds,
+      voterNames,
+      voteCount,
+      requiredVotes,
+      reachedThreshold: isOnBlock,
+      isOnBlock,
+      isCurrentExecutionCandidate,
+      previousExecutionCandidatePlayerId,
+      pendingDeathPlayerId,
+    },
     payload: {
       nominationId: nomination.id,
       nominatorPlayerId,
       nomineePlayerId,
       votePlayerIds: uniqueVotePlayerIds,
       voterNames,
+      voteCount,
+      requiredVotes,
+      isOnBlock,
+      pendingDeathPlayerId,
+    },
+  });
+
+  nextGame = addGameLog(nextGame, {
+    type: "vote",
+    category: "vote",
+    title: `${nominee.displayName} received ${voteCount} vote(s)`,
+    description: `Vote record for nomination ${nominationIndexOfDay}. Threshold: ${requiredVotes}.`,
+    actorPlayerId: nominatorPlayerId,
+    targetPlayerIds: [nomineePlayerId, ...uniqueVotePlayerIds],
+    result: {
+      type: "number",
+      value: voteCount,
+    },
+    metadata: {
+      nominationId: nomination.id,
+      nominationIndexOfDay,
+      nomineePlayerId,
+      votePlayerIds: uniqueVotePlayerIds,
+      voterNames,
+      voteCount,
+      requiredVotes,
+      reachedThreshold: isOnBlock,
+      isCurrentExecutionCandidate,
+      previousExecutionCandidatePlayerId,
+      pendingDeathPlayerId,
+    },
+    payload: {
+      nominationId: nomination.id,
+      votePlayerIds: uniqueVotePlayerIds,
       voteCount,
       requiredVotes,
       isOnBlock,
@@ -278,16 +371,8 @@ export function createNomination(input: {
     nextGame = applyWinCondition(nextGame);
 
     if (nextGame.currentPhase !== "ended") {
-      nextGame = enterDusk(nextGame);
+      nextGame = advanceGamePhase(nextGame);
     }
-  }
-
-  if (
-    !shouldTriggerVirgin &&
-    isOnBlock &&
-    nextGame.currentPhase !== "ended"
-  ) {
-    nextGame = enterDusk(nextGame);
   }
 
   return {

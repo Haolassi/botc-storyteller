@@ -110,8 +110,16 @@ export default function NewGamePage() {
   const [playerCount, setPlayerCount] = useState(7);
   const [seatAssignmentMode, setSeatAssignmentMode] =
     useState<SeatAssignmentMode>("manual");
-  const [playerNamesText, setPlayerNamesText] = useState(
-    "Alice\nBob\nCharlie\nDiana\nEthan\nFiona\nGrace",
+  const [randomSeatNames, setRandomSeatNames] = useState<Record<number, string>>(
+    {
+      1: "Alice",
+      2: "Bob",
+      3: "Charlie",
+      4: "Diana",
+      5: "Ethan",
+      6: "Fiona",
+      7: "Grace",
+    },
   );
   const [seatRoleIds, setSeatRoleIds] = useState<Record<number, string>>({});
   const [manualSeatNames, setManualSeatNames] = useState<Record<number, string>>(
@@ -134,11 +142,10 @@ export default function NewGamePage() {
   }, [playerCount]);
 
   const playerNames = useMemo(() => {
-    return playerNamesText
-      .split("\n")
-      .map((name) => name.trim())
+    return seats
+      .map((seatNumber) => randomSeatNames[seatNumber]?.trim() ?? "")
       .filter(Boolean);
-  }, [playerNamesText]);
+  }, [randomSeatNames, seats]);
 
   const selectedRoleIds = useMemo(() => {
     return seats.map((seatNumber) => seatRoleIds[seatNumber]).filter(Boolean);
@@ -261,6 +268,16 @@ export default function NewGamePage() {
       return next;
     });
 
+    setRandomSeatNames((current) => {
+      const next: Record<number, string> = {};
+
+      for (let seatNumber = 1; seatNumber <= nextCount; seatNumber += 1) {
+        next[seatNumber] = current[seatNumber] ?? "";
+      }
+
+      return next;
+    });
+
     setDrunkApparentCharacterIds((current) => {
       const next: Record<number, string> = {};
 
@@ -295,6 +312,13 @@ export default function NewGamePage() {
 
   function handleManualNameChange(seatNumber: number, name: string) {
     setManualSeatNames((current) => ({
+      ...current,
+      [seatNumber]: name,
+    }));
+  }
+
+  function handleRandomNameChange(seatNumber: number, name: string) {
+    setRandomSeatNames((current) => ({
       ...current,
       [seatNumber]: name,
     }));
@@ -708,23 +732,31 @@ export default function NewGamePage() {
 
           {seatAssignmentMode === "random" ? (
             <div className="mt-5">
-              <label
-                htmlFor="players"
-                className="block text-sm font-medium text-gray-700"
-              >
-                玩家名单
-              </label>
+              <div className="text-sm font-medium text-gray-700">玩家名单</div>
               <p className="mt-1 text-xs text-gray-500">
-                一行一个玩家名。创建时会随机分配到座位。
+                每名玩家一个栏位。创建时系统会随机分配到座位。
               </p>
 
-              <textarea
-                id="players"
-                value={playerNamesText}
-                onChange={(event) => setPlayerNamesText(event.target.value)}
-                rows={10}
-                className="mt-2 w-full resize-y rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm leading-6 outline-none focus:border-gray-500"
-              />
+              <div className="mt-3 space-y-2">
+                {seats.map((seatNumber) => (
+                  <label
+                    key={seatNumber}
+                    className="block rounded-xl border border-gray-200 bg-white px-3 py-2"
+                  >
+                    <span className="text-xs text-gray-500">
+                      玩家 {seatNumber}
+                    </span>
+                    <input
+                      value={randomSeatNames[seatNumber] ?? ""}
+                      onChange={(event) =>
+                        handleRandomNameChange(seatNumber, event.target.value)
+                      }
+                      className="mt-1 w-full border-0 bg-transparent p-0 text-sm outline-none"
+                      placeholder="玩家名"
+                    />
+                  </label>
+                ))}
+              </div>
             </div>
           ) : (
             <p className="mt-5 text-sm text-gray-500">

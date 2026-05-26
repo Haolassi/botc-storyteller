@@ -84,15 +84,78 @@ export type GameLogType =
   | "win_condition"
   | "manual_note";
 
+export type GameLogCategory =
+  | "phase"
+  | "night_action"
+  | "info_given"
+  | "status_change"
+  | "nomination"
+  | "vote"
+  | "execution"
+  | "death"
+  | "ability"
+  | "manual_note"
+  | "correction"
+  | "system";
+
+export type GameLogVisibility = "storyteller_only";
+
+export type GameLogResult =
+  | {
+      type: "number";
+      value: number;
+    }
+  | {
+      type: "boolean";
+      value: boolean;
+    }
+  | {
+      type: "character";
+      value: string;
+    }
+  | {
+      type: "players";
+      value: string[];
+    }
+  | {
+      type: "text";
+      value: string;
+    };
+
+export interface GameLogSystemReference {
+  summary: string;
+  expectedResult?: GameLogResult;
+  isAffectedByDrunkOrPoison?: boolean;
+  relatedPlayerIds?: string[];
+  relatedCharacterIds?: string[];
+  notes?: string[];
+}
+
+export interface GameLogCorrection {
+  correctedLogId: string;
+  reason: string;
+}
+
 export interface GameLogEntry {
   id: string;
   gameId: string;
+  timestamp: string;
   day: number;
   phase: GamePhase;
   subPhase?: DaySubPhase | null;
+  category: GameLogCategory;
+  visibility: GameLogVisibility;
   type: GameLogType;
   title: string;
   description?: string;
+  actorPlayerId?: string;
+  targetPlayerIds?: string[];
+  characterId?: string;
+  shownCharacterId?: string;
+  result?: GameLogResult;
+  systemReference?: GameLogSystemReference;
+  correction?: GameLogCorrection;
+  metadata?: Record<string, unknown>;
   payload?: Record<string, unknown>;
   createdAt: string;
 }
@@ -176,6 +239,15 @@ export interface GamePlayer {
   isPoisoned: boolean;
 }
 
+export type GameSnapshot = Omit<Game, "history">;
+
+export interface GameHistoryEntry {
+  id: string;
+  label: string;
+  snapshot: GameSnapshot;
+  createdAt: string;
+}
+
 export interface Game {
   id: string;
   scriptId: string;
@@ -195,6 +267,7 @@ export interface Game {
   nightActionState: NightActionState;
   privateInfos: PrivateInfo[];
   logs: GameLogEntry[];
+  history: GameHistoryEntry[];
 
   createdAt: string;
   updatedAt: string;

@@ -1,8 +1,10 @@
 import { getCharacterById } from "@/lib/gameData";
+import { appendGameLog, createGameLogBase } from "@/lib/gameLogs";
 import { createLocalId } from "@/lib/localGames";
 import type {
   DaySubPhase,
   Game,
+  GameHistoryEntry,
   GameLogEntry,
   GameLogType,
   GamePhase,
@@ -35,18 +37,12 @@ export function createGameLog(input: {
   description?: string;
   payload?: Record<string, unknown>;
 }): GameLogEntry {
-  return {
-    id: createLocalId("log"),
-    gameId: input.game.id,
-    day: input.game.currentDay,
-    phase: input.game.currentPhase,
-    subPhase: input.game.currentDaySubPhase,
+  return createGameLogBase(input.game, {
     type: input.type,
     title: input.title,
     description: input.description,
     payload: input.payload,
-    createdAt: new Date().toISOString(),
-  };
+  });
 }
 
 export function addGameLog(
@@ -56,19 +52,63 @@ export function addGameLog(
     title: string;
     description?: string;
     payload?: Record<string, unknown>;
+    category?: GameLogEntry["category"];
+    actorPlayerId?: string;
+    targetPlayerIds?: string[];
+    characterId?: string;
+    shownCharacterId?: string;
+    result?: GameLogEntry["result"];
+    systemReference?: GameLogEntry["systemReference"];
+    correction?: GameLogEntry["correction"];
+    metadata?: Record<string, unknown>;
   },
 ): Game {
+  return appendGameLog(game, input);
+}
+
+function cloneGameSnapshot(game: Game): Omit<Game, "history"> {
+  const snapshot: Partial<Game> = JSON.parse(JSON.stringify(game)) as Game;
+  delete snapshot.history;
+
+  return snapshot as Omit<Game, "history">;
+}
+
+function pushPhaseSnapshot(game: Game): Game {
+  const snapshot: GameHistoryEntry = {
+    id: createLocalId("history"),
+    label: `Day ${game.currentDay} ${game.currentPhase}${
+      game.currentDaySubPhase ? `/${game.currentDaySubPhase}` : ""
+    }`,
+    snapshot: cloneGameSnapshot(game),
+    createdAt: new Date().toISOString(),
+  };
+
   return {
     ...game,
-    logs: [
-      createGameLog({
-        game,
-        ...input,
-      }),
-      ...game.logs,
-    ],
-    updatedAt: new Date().toISOString(),
+    history: [snapshot, ...(game.history ?? [])].slice(0, 20),
   };
+}
+
+function isSamePhaseSnapshot(snapshot: Omit<Game, "history">, game: Game): boolean {
+  return (
+    snapshot.currentDay === game.currentDay &&
+    snapshot.currentPhase === game.currentPhase &&
+    snapshot.currentDaySubPhase === game.currentDaySubPhase
+  );
+}
+
+function ensureCurrentPhaseStartSnapshot(game: Game): Game {
+  const [latestSnapshot] = game.history ?? [];
+
+  if (latestSnapshot && isSamePhaseSnapshot(latestSnapshot.snapshot, game)) {
+    return game;
+  }
+
+  return pushPhaseSnapshot(game);
+}
+
+function pushEnteredPhaseSnapshot(game: Game): Game {
+  return pushPhaseSnapshot(game);
 }
 
 export function evaluateWinCondition(game: Game): WinningTeam {
@@ -210,6 +250,9 @@ export function executeCurrentExecutionCandidate(game: Game): Game {
   const targetPlayer = game.players.find(
     (player) => player.id === pendingDeathPlayerId,
   );
+  const executionNomination = game.executionState.nominations.find(
+    (nomination) => nomination.nomineePlayerId === pendingDeathPlayerId,
+  );
 
   const nextPlayers = game.players.map((player) =>
     player.id === pendingDeathPlayerId
@@ -233,6 +276,7 @@ export function executeCurrentExecutionCandidate(game: Game): Game {
 
   nextGame = addGameLog(nextGame, {
     type: "player_executed",
+    category: "execution",
     title: "黄昏处决",
     description: targetPlayer
       ? `${targetPlayer.displayName} 被处决并死亡。`
@@ -240,6 +284,20 @@ export function executeCurrentExecutionCandidate(game: Game): Game {
     payload: {
       playerId: pendingDeathPlayerId,
       playerName: targetPlayer?.displayName,
+    },
+    actorPlayerId: executionNomination?.nominatorPlayerId,
+    targetPlayerIds: [pendingDeathPlayerId],
+    result: {
+      type: "boolean",
+      value: true,
+    },
+    metadata: {
+      executedPlayerId: pendingDeathPlayerId,
+      nominationId: executionNomination?.id,
+      voteCount: executionNomination?.voteCount,
+      requiredVotes: executionNomination?.requiredVotes,
+      died: true,
+      triggeredAbilities: [],
     },
   });
 
@@ -401,32 +459,42 @@ export function advanceGamePhase(game: Game): Game {
     return game;
   }
 
-  if (game.currentPhase === "dusk") {
-    return enterNight(game);
+  const gameWithSnapshot = ensureCurrentPhaseStartSnapshot(game);
+  let nextGame = gameWithSnapshot;
+
+  if (gameWithSnapshot.currentPhase === "dusk") {
+    nextGame = enterNight(gameWithSnapshot);
+    return pushEnteredPhaseSnapshot(nextGame);
   }
 
-  if (game.currentPhase === "night") {
-    return enterDay(game);
+  if (gameWithSnapshot.currentPhase === "night") {
+    nextGame = enterDay(gameWithSnapshot);
+    return pushEnteredPhaseSnapshot(nextGame);
   }
 
-  if (game.currentPhase === "day") {
-    if (game.currentDaySubPhase === "private_chat") {
-      return setDaySubPhase(game, "speeches");
+  if (gameWithSnapshot.currentPhase === "day") {
+    if (gameWithSnapshot.currentDaySubPhase === "private_chat") {
+      nextGame = setDaySubPhase(gameWithSnapshot, "speeches");
+      return pushEnteredPhaseSnapshot(nextGame);
     }
 
-    if (game.currentDaySubPhase === "speeches") {
-      return setDaySubPhase(game, "open_discussion");
+    if (gameWithSnapshot.currentDaySubPhase === "speeches") {
+      nextGame = setDaySubPhase(gameWithSnapshot, "open_discussion");
+      return pushEnteredPhaseSnapshot(nextGame);
     }
 
-    if (game.currentDaySubPhase === "open_discussion") {
-      return setDaySubPhase(game, "nomination");
+    if (gameWithSnapshot.currentDaySubPhase === "open_discussion") {
+      nextGame = setDaySubPhase(gameWithSnapshot, "nomination");
+      return pushEnteredPhaseSnapshot(nextGame);
     }
 
-    if (game.currentDaySubPhase === "nomination") {
-      return enterDusk(game);
+    if (gameWithSnapshot.currentDaySubPhase === "nomination") {
+      nextGame = enterDusk(gameWithSnapshot);
+      return pushEnteredPhaseSnapshot(nextGame);
     }
 
-    return setDaySubPhase(game, "private_chat");
+    nextGame = setDaySubPhase(gameWithSnapshot, "private_chat");
+    return pushEnteredPhaseSnapshot(nextGame);
   }
 
   return game;
@@ -438,6 +506,24 @@ export function retreatGamePhase(game: Game): Game {
   }
 
   const now = new Date().toISOString();
+  const gameWithSnapshot = ensureCurrentPhaseStartSnapshot(game);
+  const [, previousSnapshot, ...olderHistory] = gameWithSnapshot.history ?? [];
+
+  if (previousSnapshot) {
+    return addGameLog(
+      {
+        ...previousSnapshot.snapshot,
+        history: [previousSnapshot, ...olderHistory],
+        updatedAt: now,
+      },
+      {
+        type: "manual_note",
+        title: "回退阶段",
+        description:
+          "已恢复到上一阶段前的完整状态，包括玩家生死、醉酒、中毒、提名、死票和夜晚行动进度。",
+      },
+    );
+  }
 
   if (game.currentPhase === "day") {
     if (game.currentDaySubPhase === "private_chat") {
@@ -557,6 +643,33 @@ export function retreatGamePhase(game: Game): Game {
   }
 
   return game;
+}
+
+export function resetCurrentPhaseActions(game: Game): Game {
+  if (game.currentPhase === "ended") {
+    return game;
+  }
+
+  const gameWithSnapshot = ensureCurrentPhaseStartSnapshot(game);
+  const [currentSnapshot, ...olderHistory] = gameWithSnapshot.history ?? [];
+
+  if (!currentSnapshot) {
+    return game;
+  }
+
+  return addGameLog(
+    {
+      ...currentSnapshot.snapshot,
+      history: [currentSnapshot, ...olderHistory],
+      updatedAt: new Date().toISOString(),
+    },
+    {
+      type: "manual_note",
+      title: "重置本阶段",
+      description:
+        "已恢复到当前阶段开始时的完整状态，本阶段内的行动、提名、投票、状态变化和夜晚进度已被清除。",
+    },
+  );
 }
 
 export function finishDayAndEnterDusk(game: Game): Game {

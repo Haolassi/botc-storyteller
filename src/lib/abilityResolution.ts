@@ -71,10 +71,23 @@ export function setPlayerPoisoned(
 
   return addGameLog(nextGame, {
     type: "status_change",
+    category: "status_change",
     title: isPoisoned ? "标记中毒" : "取消中毒",
     description: targetPlayer
       ? `${targetPlayer.displayName} ${isPoisoned ? "被标记为中毒。" : "不再被标记为中毒。"}`
       : "更新了一名玩家的中毒状态。",
+    targetPlayerIds: [playerId],
+    result: {
+      type: "boolean",
+      value: isPoisoned,
+    },
+    metadata: {
+      playerId,
+      field: "isPoisoned",
+      previousValue: targetPlayer?.isPoisoned,
+      nextValue: isPoisoned,
+      source: "ability_or_manual",
+    },
     payload: {
       playerId,
       isPoisoned,
@@ -104,10 +117,23 @@ export function setPlayerDrunk(
 
   return addGameLog(nextGame, {
     type: "status_change",
+    category: "status_change",
     title: isDrunk ? "标记醉酒" : "取消醉酒",
     description: targetPlayer
       ? `${targetPlayer.displayName} ${isDrunk ? "被标记为醉酒。" : "不再被标记为醉酒。"}`
       : "更新了一名玩家的醉酒状态。",
+    targetPlayerIds: [playerId],
+    result: {
+      type: "boolean",
+      value: isDrunk,
+    },
+    metadata: {
+      playerId,
+      field: "isDrunk",
+      previousValue: targetPlayer?.isDrunk,
+      nextValue: isDrunk,
+      source: "ability_or_manual",
+    },
     payload: {
       playerId,
       isDrunk,
@@ -139,10 +165,22 @@ export function killPlayerAtNight(
   return applyWinCondition(
     addGameLog(nextGame, {
       type: "player_death",
+      category: "death",
       title: "夜晚死亡",
       description: targetPlayer
         ? `${targetPlayer.displayName} 在夜晚死亡。`
         : "一名玩家在夜晚死亡。",
+      targetPlayerIds: [playerId],
+      characterId: sourceCharacterId,
+      result: {
+        type: "boolean",
+        value: true,
+      },
+      metadata: {
+        playerId,
+        sourceCharacterId,
+        died: true,
+      },
       payload: {
         playerId,
         sourceCharacterId,

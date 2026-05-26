@@ -145,6 +145,7 @@ export function completeCurrentNightStep(
 
   return addGameLog(nextGame, {
     type: "night_action",
+    category: "night_action",
     title: `完成夜晚行动：${currentStep.labelZh}`,
     description: note?.trim()
       ? note.trim()
@@ -153,6 +154,27 @@ export function completeCurrentNightStep(
         : isDrunkActing
           ? "该行动由酒鬼的表面角色触发；其获得的信息不具备规则参考价值。"
           : "说书人完成了该角色的夜晚行动处理。",
+    actorPlayerId: actor?.id,
+    characterId: currentStep.characterId,
+    systemReference: {
+      summary: isDrunkActing
+        ? "该行动由酒鬼的表面角色触发，规则参考可能无效。"
+        : "说书人完成当前夜晚行动，具体裁定以说书人记录为准。",
+      isAffectedByDrunkOrPoison: isDrunkActing || Boolean(actor?.isPoisoned),
+      relatedPlayerIds: actor ? [actor.id] : undefined,
+      relatedCharacterIds: currentStep.characterId ? [currentStep.characterId] : undefined,
+      notes: note?.trim() ? [note.trim()] : undefined,
+    },
+    metadata: {
+      nightPhase: getNightPhaseForGame(game),
+      stepId: currentStep.id,
+      stepLabelZh: currentStep.labelZh,
+      stepLabelEn: currentStep.labelEn,
+      stepType: currentStep.type,
+      phase: currentStep.phase,
+      actorPlayerId: actor?.id,
+      isDrunkActing,
+    },
     payload: {
       stepId: currentStep.id,
       characterId: currentStep.characterId,

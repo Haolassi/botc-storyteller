@@ -1,4 +1,5 @@
 import type { Game, GamePlayer } from "@/types/game";
+import { normalizeGameLog } from "@/lib/gameLogs";
 
 const LOCAL_GAMES_KEY = "storyteller-notes:games";
 
@@ -45,7 +46,19 @@ export function normalizeGame(rawGame: Partial<Game>): Game {
       completedStepIds: [],
     },
     privateInfos: rawGame.privateInfos ?? [],
-    logs: rawGame.logs ?? [],
+    logs: (rawGame.logs ?? []).map((log) =>
+      normalizeGameLog(
+        {
+          id: rawGame.id ?? createLocalId("game"),
+          currentDay,
+          currentPhase: rawGame.currentPhase ?? "dusk",
+          currentDaySubPhase: rawGame.currentDaySubPhase ?? null,
+          updatedAt: rawGame.updatedAt ?? rawGame.createdAt ?? now,
+        },
+        log,
+      ),
+    ),
+    history: rawGame.history ?? [],
     createdAt: rawGame.createdAt ?? now,
     updatedAt: rawGame.updatedAt ?? rawGame.createdAt ?? now,
   };
@@ -162,6 +175,7 @@ export function createInitialGameState(input: {
     },
     privateInfos: [],
     logs: [],
+    history: [],
     createdAt: now,
     updatedAt: now,
   });
