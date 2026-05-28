@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "BOTC Storyteller",
-  description: "Blood on the Clocktower storyteller controller",
+  title: "血染钟楼说书人工具",
+  description: "血染钟楼说书人控制台",
 };
 
 export default function RootLayout({

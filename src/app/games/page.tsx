@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { ArrowLeft, Plus } from "lucide-react";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { ResourceCard } from "@/components/shared/resource-card";
@@ -8,15 +8,15 @@ import { Button } from "@/components/ui/button";
 const games = [
   {
     id: "example-friday-night",
-    title: "Friday Night Table",
-    description: "Session planning placeholder for an upcoming game.",
-    meta: "12 seats planned",
+    title: "周五夜晚示例桌",
+    description: "用于展示对局入口的示例占位。",
+    meta: "计划十二个座位",
   },
   {
     id: "example-convention-demo",
-    title: "Convention Demo",
-    description: "A teaching session with quick notes and reminders.",
-    meta: "Intro session",
+    title: "教学演示示例",
+    description: "用于教学局记录与提醒的示例占位。",
+    meta: "入门局",
   },
 ];
 
@@ -24,16 +24,24 @@ export default function GamesPage() {
   return (
     <div className="space-y-8">
       <PageHeader
-        eyebrow="Games"
-        title="Game sessions"
-        description="Prepare and review sessions without wiring authentication, players, or live game state yet."
+        eyebrow="对局"
+        title="对局列表"
+        description="查看示例对局入口，或创建新的本地对局。"
         actions={
-          <Button asChild>
-            <Link href="/games/new">
-              <Plus aria-hidden="true" />
-              New Game
-            </Link>
-          </Button>
+          <>
+            <Button asChild variant="outline">
+              <Link href="/">
+                <ArrowLeft aria-hidden="true" />
+                返回首页
+              </Link>
+            </Button>
+            <Button asChild>
+              <Link href="/games/new">
+                <Plus aria-hidden="true" />
+                新建本地对局
+              </Link>
+            </Button>
+          </>
         }
       />
 

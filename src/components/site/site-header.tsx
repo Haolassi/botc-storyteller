@@ -4,8 +4,8 @@ import { ScrollText, Swords } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const navItems = [
-  { href: "/scripts", label: "Scripts" },
-  { href: "/games", label: "Games" },
+  { href: "/scripts", label: "剧本" },
+  { href: "/games", label: "对局" },
 ];
 
 export function SiteHeader() {
@@ -14,7 +14,7 @@ export function SiteHeader() {
       <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <Link href="/" className="flex items-center gap-2 font-semibold">
           <Swords className="size-5" aria-hidden="true" />
-          <span>Deduction Desk</span>
+          <span>说书人工具</span>
         </Link>
 
         <nav className="flex items-center gap-1">
@@ -26,7 +26,7 @@ export function SiteHeader() {
           <Button asChild size="sm" className="ml-2">
             <Link href="/scripts/new">
               <ScrollText aria-hidden="true" />
-              New Script
+              新建剧本
             </Link>
           </Button>
         </nav>

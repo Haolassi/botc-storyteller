@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -112,13 +113,13 @@ export default function NewGamePage() {
     useState<SeatAssignmentMode>("manual");
   const [randomSeatNames, setRandomSeatNames] = useState<Record<number, string>>(
     {
-      1: "Alice",
-      2: "Bob",
-      3: "Charlie",
-      4: "Diana",
-      5: "Ethan",
-      6: "Fiona",
-      7: "Grace",
+      1: "玩家一",
+      2: "玩家二",
+      3: "玩家三",
+      4: "玩家四",
+      5: "玩家五",
+      6: "玩家六",
+      7: "玩家七",
     },
   );
   const [seatRoleIds, setSeatRoleIds] = useState<Record<number, string>>({});
@@ -493,7 +494,14 @@ export default function NewGamePage() {
   return (
     <main className="min-h-screen w-full px-4 py-8 sm:px-6 lg:px-8 xl:px-10">
       <div className="mb-8">
-        <p className="text-sm text-gray-500">Games</p>
+        <div className="flex flex-wrap gap-3 text-sm text-gray-500">
+          <Link href="/" className="hover:underline">
+            返回首页
+          </Link>
+          <Link href="/games" className="hover:underline">
+            返回对局列表
+          </Link>
+        </div>
         <h1 className="mt-1 text-3xl font-bold tracking-tight">创建对局</h1>
         <p className="mt-2 text-sm text-gray-600">
           按说书人流程创建对局：选择板子、确定人数、分配角色和座位，并设置酒鬼表面角色、占卜师红鲱鱼等开局信息。
@@ -521,7 +529,7 @@ export default function NewGamePage() {
               >
                 {scripts.map((script) => (
                   <option key={script.id} value={script.id}>
-                    {script.nameZh} / {script.nameEn}
+                    {script.nameZh}
                   </option>
                 ))}
               </select>
@@ -641,7 +649,7 @@ export default function NewGamePage() {
                     <optgroup label="镇民">
                       {groupedCharacters.townsfolk.map((character) => (
                         <option key={character.id} value={character.id}>
-                          {character.nameZh} / {character.nameEn}
+                          {character.nameZh}
                         </option>
                       ))}
                     </optgroup>
@@ -649,7 +657,7 @@ export default function NewGamePage() {
                     <optgroup label="外来者">
                       {groupedCharacters.outsider.map((character) => (
                         <option key={character.id} value={character.id}>
-                          {character.nameZh} / {character.nameEn}
+                          {character.nameZh}
                         </option>
                       ))}
                     </optgroup>
@@ -657,7 +665,7 @@ export default function NewGamePage() {
                     <optgroup label="爪牙">
                       {groupedCharacters.minion.map((character) => (
                         <option key={character.id} value={character.id}>
-                          {character.nameZh} / {character.nameEn}
+                          {character.nameZh}
                         </option>
                       ))}
                     </optgroup>
@@ -665,7 +673,7 @@ export default function NewGamePage() {
                     <optgroup label="恶魔">
                       {groupedCharacters.demon.map((character) => (
                         <option key={character.id} value={character.id}>
-                          {character.nameZh} / {character.nameEn}
+                          {character.nameZh}
                         </option>
                       ))}
                     </optgroup>
@@ -699,7 +707,7 @@ export default function NewGamePage() {
                         <option value="">请选择表面镇民</option>
                         {townsfolkCharacters.map((character) => (
                           <option key={character.id} value={character.id}>
-                            {character.nameZh} / {character.nameEn}
+                            {character.nameZh}
                           </option>
                         ))}
                       </select>

@@ -1,38 +1,27 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 
 import {
   generateSpeechOrder,
-  logOpenDiscussionEnded,
-  logOpenDiscussionStarted,
-  logPrivateChatEnded,
-  logPrivateChatStarted,
-  logSpeechOrderGenerated,
   type SpeechDirection,
 } from "@/lib/dayTools";
 import {
-  addGameLog,
-  advanceGamePhase,
-  applyWinCondition,
   daySubPhaseLabels,
-  endGameManually,
   getAlivePlayerCount,
   getMaxNominations,
   getRequiredVotes,
   phaseLabels,
-  retreatGamePhase,
-  resetCurrentPhaseActions,
   winningTeamLabels,
 } from "@/lib/gameFlow";
 import { getCharacterById, getScriptById } from "@/lib/gameData";
-import { buildReadableLogText, createManualNoteLog } from "@/lib/gameLogs";
-import { getLocalGameById, saveLocalGame } from "@/lib/localGames";
+import { reduceGameAction } from "@/lib/gameReducer";
+import { validateGameAction } from "@/lib/gameValidation";
+import { buildReadableLogText } from "@/lib/gameLogs";
+import { localGameStore } from "@/lib/localGameStore";
 import {
-  clearExecutionCandidate,
-  createNomination,
   getCurrentExecutionCandidate,
   getNominationStatusForPlayer,
   getRemainingNominationCount,
@@ -47,22 +36,52 @@ import {
   getRegisteredCharacter,
 } from "@/lib/registrationLogic";
 import {
-  completeCurrentNightStep,
   getActiveNightSteps,
   getCurrentNightStep,
   getNightActorForStep,
   getNightPhaseForGame,
   getNightProgress,
   isPlayerActingAsDrunk,
-  resetNightActions,
 } from "@/lib/nightActions";
-import { setPlayerPoisoned } from "@/lib/abilityResolution";
+import type { GameAction } from "@/types/actions";
 import type { Alignment, Character, Game, GamePlayer } from "@/types/game";
 
 const alignmentLabels = {
   good: "善良",
   evil: "邪恶",
 } as const;
+
+const gameStatusLabels: Record<Game["status"], string> = {
+  setup: "设置中",
+  running: "进行中",
+  finished: "已结束",
+};
+
+const logViewModeLabels = {
+  timeline: "时间线",
+  by_day: "按天数",
+  by_category: "按类别",
+  by_player: "按玩家",
+} as const;
+
+const logCategoryLabels: Record<string, string> = {
+  phase: "阶段",
+  night_action: "夜晚行动",
+  info_given: "信息告知",
+  status_change: "状态变化",
+  nomination: "提名",
+  vote: "投票",
+  execution: "处决",
+  death: "死亡",
+  ability: "技能",
+  manual_note: "手动备注",
+  correction: "纠错",
+  system: "系统",
+};
+
+function getLogCategoryLabel(category: string): string {
+  return logCategoryLabels[category] ?? "其他";
+}
 
 function getSeatPosition(index: number, total: number) {
   const angle = (2 * Math.PI * index) / total - Math.PI / 2;
@@ -145,7 +164,6 @@ const [nightSecondTargetPlayerId, setNightSecondTargetPlayerId] =
 const [nightSelectedCharacterId, setNightSelectedCharacterId] = useState("");
 const [nightInfoNoRoleInPlay, setNightInfoNoRoleInPlay] = useState(false);
 const [nightReferenceNumber, setNightReferenceNumber] = useState(0);
-const [nightProtectedPlayerId, setNightProtectedPlayerId] = useState("");
 const [nightYesNoAnswer, setNightYesNoAnswer] = useState<"yes" | "no">("no");
 const [nightMayorRedirectPlayerId, setNightMayorRedirectPlayerId] =
   useState("");
@@ -173,20 +191,41 @@ const [nightRegistrationOverrides, setNightRegistrationOverrides] = useState<
     [],
   );
 
-  function updateGame(nextGame: Game) {
+  const updateGame = useCallback((nextGame: Game) => {
     setGame(nextGame);
-    saveLocalGame(nextGame);
-  }
+    void localGameStore.saveGame(nextGame);
+  }, []);
+
+  const submitGameAction = useCallback((action: GameAction) => {
+    if (!game) {
+      return {
+        ok: false,
+        reason: "Game has not loaded.",
+      } as const;
+    }
+
+    const validation = validateGameAction(game, action);
+
+    if (!validation.ok) {
+      console.warn(`Game action rejected: ${validation.reason}`);
+      return validation;
+    }
+
+    updateGame(reduceGameAction(game, action));
+    return {
+      ok: true,
+    } as const;
+  }, [game, updateGame]);
 
   useEffect(() => {
     if (!gameId) {
       return;
     }
 
-    queueMicrotask(() => {
-      const savedGame = getLocalGameById(gameId);
+    queueMicrotask(async () => {
+      const savedGame = await localGameStore.getGame(gameId);
 
-      setGame(savedGame ?? null);
+      setGame(savedGame);
       setHasLoaded(true);
     });
   }, [gameId]);
@@ -206,7 +245,7 @@ const [nightRegistrationOverrides, setNightRegistrationOverrides] = useState<
             game.currentDaySubPhase === "private_chat"
           ) {
             queueMicrotask(() => {
-              updateGame(advanceGamePhase(game));
+              submitGameAction({ type: "ADVANCE_PHASE" });
             });
           }
 
@@ -220,7 +259,7 @@ const [nightRegistrationOverrides, setNightRegistrationOverrides] = useState<
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [game, isPrivateChatTimerRunning]);
+  }, [game, isPrivateChatTimerRunning, submitGameAction]);
 
   useEffect(() => {
     if (!isOpenDiscussionTimerRunning) {
@@ -237,7 +276,7 @@ const [nightRegistrationOverrides, setNightRegistrationOverrides] = useState<
             game.currentDaySubPhase === "open_discussion"
           ) {
             queueMicrotask(() => {
-              updateGame(advanceGamePhase(game));
+              submitGameAction({ type: "ADVANCE_PHASE" });
             });
           }
 
@@ -251,7 +290,7 @@ const [nightRegistrationOverrides, setNightRegistrationOverrides] = useState<
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [game, isOpenDiscussionTimerRunning]);
+  }, [game, isOpenDiscussionTimerRunning, submitGameAction]);
 
   const script = game ? getScriptById(game.scriptId) : undefined;
 
@@ -346,108 +385,8 @@ const [nightRegistrationOverrides, setNightRegistrationOverrides] = useState<
     });
   }
 
-  function updatePlayer(
-    playerId: string,
-    updater: (player: GamePlayer) => GamePlayer,
-  ) {
-    if (!game) {
-      return;
-    }
-
-    const previousPlayer = game.players.find((player) => player.id === playerId);
-    const updatedPlayers = game.players.map((player) =>
-      player.id === playerId ? updater(player) : player,
-    );
-    const nextPlayer = updatedPlayers.find((player) => player.id === playerId);
-
-    let loggedGame: Game = {
-      ...game,
-      players: updatedPlayers,
-      updatedAt: new Date().toISOString(),
-    };
-
-    if (previousPlayer && nextPlayer) {
-      if (previousPlayer.isAlive !== nextPlayer.isAlive) {
-        loggedGame = addGameLog(loggedGame, {
-          type: "player_death",
-          category: "death",
-          title: nextPlayer.isAlive ? "手动设为存活" : "手动设为死亡",
-          description: `${nextPlayer.seatNumber}. ${nextPlayer.displayName} 被手动${
-            nextPlayer.isAlive ? "设为存活" : "设为死亡"
-          }。`,
-          targetPlayerIds: [playerId],
-          result: {
-            type: "boolean",
-            value: !nextPlayer.isAlive,
-          },
-          metadata: {
-            playerId,
-            field: "isAlive",
-            previousValue: previousPlayer.isAlive,
-            nextValue: nextPlayer.isAlive,
-            source: "manual_toggle",
-          },
-        });
-      }
-
-      if (previousPlayer.isDrunk !== nextPlayer.isDrunk) {
-        loggedGame = addGameLog(loggedGame, {
-          type: "status_change",
-          category: "status_change",
-          title: nextPlayer.isDrunk ? "手动标记醉酒" : "手动取消醉酒",
-          description: `${nextPlayer.seatNumber}. ${nextPlayer.displayName} 被手动${
-            nextPlayer.isDrunk ? "标记为醉酒" : "取消醉酒"
-          }。`,
-          targetPlayerIds: [playerId],
-          result: {
-            type: "boolean",
-            value: nextPlayer.isDrunk,
-          },
-          metadata: {
-            playerId,
-            field: "isDrunk",
-            previousValue: previousPlayer.isDrunk,
-            nextValue: nextPlayer.isDrunk,
-            source: "manual_toggle",
-          },
-        });
-      }
-
-      if (previousPlayer.isPoisoned !== nextPlayer.isPoisoned) {
-        loggedGame = addGameLog(loggedGame, {
-          type: "status_change",
-          category: "status_change",
-          title: nextPlayer.isPoisoned ? "手动标记中毒" : "手动取消中毒",
-          description: `${nextPlayer.seatNumber}. ${nextPlayer.displayName} 被手动${
-            nextPlayer.isPoisoned ? "标记为中毒" : "取消中毒"
-          }。`,
-          targetPlayerIds: [playerId],
-          result: {
-            type: "boolean",
-            value: nextPlayer.isPoisoned,
-          },
-          metadata: {
-            playerId,
-            field: "isPoisoned",
-            previousValue: previousPlayer.isPoisoned,
-            nextValue: nextPlayer.isPoisoned,
-            source: "manual_toggle",
-          },
-        });
-      }
-    }
-
-    const nextGame = applyWinCondition(loggedGame);
-
-    updateGame(nextGame);
-  }
-
   function handleAdvancePhase() {
-    if (!game) {
-      return;
-    }
-
-    updateGame(advanceGamePhase(game));
+    submitGameAction({ type: "ADVANCE_PHASE" });
   }
 
   function handleRetreatPhase() {
@@ -483,16 +422,11 @@ const [nightRegistrationOverrides, setNightRegistrationOverrides] = useState<
   }
 
   function executePhaseOperation(action: "retreat" | "reset") {
-    if (!game) {
-      return;
-    }
-
-    const nextGame =
+    submitGameAction(
       action === "retreat"
-        ? retreatGamePhase(game)
-        : resetCurrentPhaseActions(game);
-
-    updateGame(nextGame);
+        ? { type: "RETREAT_PHASE" }
+        : { type: "RESET_PHASE_ACTIONS" },
+    );
   }
 
   function handleConfirmPhaseOperation() {
@@ -513,11 +447,12 @@ const [nightRegistrationOverrides, setNightRegistrationOverrides] = useState<
   }
 
   function handleManualWin(winningTeam: "good" | "evil") {
-    if (!game) {
-      return;
-    }
-
-    updateGame(endGameManually(game, winningTeam));
+    submitGameAction({
+      type: "END_GAME_MANUALLY",
+      payload: {
+        winningTeam,
+      },
+    });
   }
 
   function toggleVotePlayer(playerId: string) {
@@ -576,494 +511,86 @@ const [nightRegistrationOverrides, setNightRegistrationOverrides] = useState<
       return;
     }
 
-    const result = createNomination({
-      game,
-      nominatorPlayerId,
-      nomineePlayerId,
-      votePlayerIds,
+    const result = submitGameAction({
+      type: "RESOLVE_NOMINATION",
+      payload: {
+        nominatorPlayerId,
+        nomineePlayerId,
+        votePlayerIds,
+        createdAt: new Date().toISOString(),
+        actorPlayerId: nominatorPlayerId,
+      },
     });
 
-    if (result.error) {
-      setNominationError(result.error);
+    if (!result.ok) {
+      setNominationError(result.reason);
       return;
     }
 
-    updateGame(result.game);
     resetNominationForm();
   }
 
   function handleClearExecutionCandidate() {
-    if (!game) {
-      return;
-    }
-
-    updateGame(clearExecutionCandidate(game));
+    submitGameAction({
+      type: "CLEAR_EXECUTION_CANDIDATE",
+      payload: {
+        createdAt: new Date().toISOString(),
+      },
+    });
   }
 
   function handleUseSlayer(slayerPlayer: GamePlayer) {
-    if (!game || !slayerTargetPlayerId) {
+    if (!slayerTargetPlayerId) {
       return;
     }
 
-    const usedSlayerPlayerIds = game.setupState.usedSlayerPlayerIds ?? [];
-
-    if (usedSlayerPlayerIds.includes(slayerPlayer.id)) {
-      return;
-    }
-
-    const targetPlayer = game.players.find(
-      (player) => player.id === slayerTargetPlayerId,
-    );
-
-    if (!targetPlayer) {
-      return;
-    }
-
-    const targetCharacter = getRealCharacter(targetPlayer);
-    const slayerFails = slayerPlayer.isPoisoned || slayerPlayer.isDrunk;
-    const shouldKillTarget =
-      !slayerFails && targetCharacter?.type === "demon" && targetPlayer.isAlive;
-
-    let nextGame: Game = {
-      ...game,
-      players: game.players.map((player) =>
-        player.id === targetPlayer.id && shouldKillTarget
-          ? {
-              ...player,
-              isAlive: false,
-            }
-          : player,
-      ),
-      setupState: {
-        ...game.setupState,
-        usedSlayerPlayerIds: [...usedSlayerPlayerIds, slayerPlayer.id],
-      },
-      updatedAt: new Date().toISOString(),
-    };
-
-    nextGame = addGameLog(nextGame, {
-      type: shouldKillTarget ? "player_death" : "day_action",
-      title: "猎手发动技能",
-      description: shouldKillTarget
-        ? `${slayerPlayer.displayName} 选择 ${targetPlayer.displayName}，目标是真实恶魔并死亡。`
-        : slayerFails
-          ? `${slayerPlayer.displayName} 选择 ${targetPlayer.displayName}，但猎手醉酒或中毒，技能失败。`
-          : `${slayerPlayer.displayName} 选择 ${targetPlayer.displayName}，目标不是真实恶魔，未造成死亡。`,
+    submitGameAction({
+      type: "USE_DAY_ABILITY",
       payload: {
-        slayerPlayerId: slayerPlayer.id,
-        targetPlayerId: targetPlayer.id,
-        slayerFails,
+        characterId: "slayer",
+        actorPlayerId: slayerPlayer.id,
+        targetPlayerId: slayerTargetPlayerId,
+        createdAt: new Date().toISOString(),
       },
     });
-
-    updateGame(applyWinCondition(nextGame));
     setSlayerTargetPlayerId("");
   }
-
-  void handleUseSlayer;
 
   function handleCompleteNightStep() {
     if (!game) {
       return;
     }
 
-    let generatedNote = nightActionNote.trim();
-    const currentNightActionFails = Boolean(currentNightActorPlayer?.isPoisoned);
-
-    if (currentNightActionFails) {
-      const failureNote = "中毒判定：该行动玩家当前被标记为中毒，本次技能发动失败。";
-
-      generatedNote = generatedNote
-        ? `${generatedNote}\n\n${failureNote}`
-        : failureNote;
-    }
-
-    if (isTwoPlayerInfoCharacter && firstNightInfoPlayer && secondNightInfoPlayer) {
-      const shownCharacter = nightSelectedCharacterId
-        ? getCharacterById(nightSelectedCharacterId)
-        : undefined;
-      const matchingPlayers = matchingNightInfoPlayers
-        .map((entry) => `${entry?.player.seatNumber}. ${entry?.player.displayName}`)
-        .join(", ");
-      const referenceNote = [
-        `${currentNightCharacter?.nameZh ?? "信息角色"}规则参考：`,
-        `候选玩家：${firstNightInfoPlayer.player.seatNumber}. ${firstNightInfoPlayer.player.displayName}、${secondNightInfoPlayer.player.seatNumber}. ${secondNightInfoPlayer.player.displayName}`,
-        nightInfoNoRoleInPlay
-          ? "展示信息：场上不存在对应类型角色。"
-          : `展示角色：${shownCharacter ? `${shownCharacter.nameZh} / ${shownCharacter.nameEn}` : "未选择"}`,
-        matchingPlayers
-          ? `两名候选中登记类型匹配的玩家：${matchingPlayers}`
-          : "两名候选中没有登记类型匹配的玩家。",
-        "最终给出的信息仍由说书人决定。",
-      ].join("\n");
-
-      generatedNote = generatedNote
-        ? `${generatedNote}\n\n${referenceNote}`
-        : referenceNote;
-    }
-
-    if (currentNightCharacter?.id === "chef") {
-      const pairs = getChefRegisteredEvilPairs(game);
-      const pairText =
-        pairs.length > 0
-          ? pairs
-              .map(
-                ({ first, second }) =>
-                  `${first.seatNumber}. ${first.displayName} + ${second.seatNumber}. ${second.displayName}`,
-              )
-              .join("; ")
-          : "没有登记为邪恶且相邻的玩家对。";
-      const referenceNote = [
-        "厨师规则参考：",
-        `相邻邪恶对数：${pairs.length}`,
-        `说书人记录数字：${nightReferenceNumber}`,
-        `相邻邪恶玩家对：${pairText}`,
-        "该结果基于当前 registeredAlignment；最终给出的数字仍由说书人决定。",
-      ].join("\n");
-
-      generatedNote = generatedNote
-        ? `${generatedNote}\n\n${referenceNote}`
-        : referenceNote;
-    }
-
-    if (currentNightCharacter?.id === "empath" && currentNightActorPlayer) {
-      const empathReference = getEmpathRegisteredEvilNeighborCount(
-        game,
-        currentNightActorPlayer.id,
-      );
-      const neighborText = [empathReference.left, empathReference.right]
-        .filter((player): player is GamePlayer => Boolean(player))
-        .map((player) => `${player.seatNumber}. ${player.displayName}`)
-        .join(", ");
-      const referenceNote = [
-        "共情者规则参考：",
-        `最近存活邻座：${neighborText || "未找到足够的存活邻座"}`,
-        `系统计算邪恶人数：${empathReference.count}`,
-        `说书人记录数字：${nightReferenceNumber}`,
-        "该结果基于当前 registeredAlignment；最终给出的数字仍由说书人决定。",
-      ].join("\n");
-
-      generatedNote = generatedNote
-        ? `${generatedNote}\n\n${referenceNote}`
-        : referenceNote;
-    }
-
-    if (
-      currentNightCharacter?.id === "fortune_teller" &&
-      nightTargetPlayerId &&
-      nightSecondTargetPlayerId
-    ) {
-      const fortuneTellerReference = getFortuneTellerCorrectResult({
-        game,
-        firstPlayerId: nightTargetPlayerId,
-        secondPlayerId: nightSecondTargetPlayerId,
-      });
-      const firstTarget = game.players.find(
-        (player) => player.id === nightTargetPlayerId,
-      );
-      const secondTarget = game.players.find(
-        (player) => player.id === nightSecondTargetPlayerId,
-      );
-      const referenceNote = [
-        "占卜师规则参考：",
-        `选择目标：${firstTarget ? `${firstTarget.seatNumber}. ${firstTarget.displayName}` : "未知"}、${secondTarget ? `${secondTarget.seatNumber}. ${secondTarget.displayName}` : "未知"}`,
-        `系统参考结果：${fortuneTellerReference.hasDemonSignal ? "是" : "否"}`,
-        `原因：${fortuneTellerReference.reasons.join("；")}`,
-        "该结果基于当前登记恶魔与红鲱鱼；最终给出的答案仍由说书人决定。",
-      ].join("\n");
-
-      generatedNote = generatedNote
-        ? `${generatedNote}\n\n${referenceNote}`
-        : referenceNote;
-    }
-
-    if (currentNightCharacter?.id === "fortune_teller") {
-      const answerNote = `占卜师说书人答案：${nightYesNoAnswer === "yes" ? "是" : "否"}`;
-
-      generatedNote = generatedNote
-        ? `${generatedNote}\n${answerNote}`
-        : answerNote;
-    }
-
-    if (currentNightCharacter?.id === "undertaker") {
-      const executedPlayer = game.executionState.executedPlayerId
-        ? game.players.find(
-            (player) => player.id === game.executionState.executedPlayerId,
-          )
-        : undefined;
-      const executedCharacter = executedPlayer
-        ? getRealCharacter(executedPlayer)
-        : undefined;
-      const referenceNote = [
-        "送葬者规则参考：",
-        executedPlayer
-          ? `今日白天被处决玩家：${executedPlayer.seatNumber}. ${executedPlayer.displayName}`
-          : "今日白天没有记录到被处决玩家。",
-        executedCharacter
-          ? `真实角色：${executedCharacter.nameZh} / ${executedCharacter.nameEn}`
-          : "真实角色：无",
-        "若该信息受醉酒、中毒或说书人决定影响，最终告知内容由说书人决定。",
-      ].join("\n");
-
-      generatedNote = generatedNote
-        ? `${generatedNote}\n\n${referenceNote}`
-        : referenceNote;
-    }
-
-    let nextGame = game;
-
-    if (
-      currentNightCharacter?.id === "poisoner" &&
-      nightTargetPlayerId &&
-      !currentNightActionFails
-    ) {
-      nextGame = setPlayerPoisoned(nextGame, nightTargetPlayerId, true);
-
-      const target = game.players.find(
-        (player) => player.id === nightTargetPlayerId,
-      );
-      const referenceNote = [
-        "投毒者行动：",
-        `目标：${target ? `${target.seatNumber}. ${target.displayName}` : "未知玩家"}`,
-        "系统已将该玩家标记为中毒。此标记用于说书人参考，不自动裁定所有技能结果。",
-      ].join("\n");
-
-      generatedNote = generatedNote
-        ? `${generatedNote}\n\n${referenceNote}`
-        : referenceNote;
-    }
-
-    if (
-      currentNightCharacter?.id === "monk" &&
-      nightTargetPlayerId &&
-      !currentNightActionFails
-    ) {
-      setNightProtectedPlayerId(nightTargetPlayerId);
-
-      const target = game.players.find(
-        (player) => player.id === nightTargetPlayerId,
-      );
-      const referenceNote = [
-        "僧侣行动：",
-        `保护目标：${target ? `${target.seatNumber}. ${target.displayName}` : "未知玩家"}`,
-        "若小恶魔本夜攻击该目标，系统会提示说书人该攻击被保护影响。",
-      ].join("\n");
-
-      generatedNote = generatedNote
-        ? `${generatedNote}\n\n${referenceNote}`
-        : referenceNote;
-    }
-
-    if (
-      currentNightCharacter?.id === "butler" &&
-      nightTargetPlayerId &&
-      currentNightActorPlayer &&
-      !currentNightActionFails
-    ) {
-      const target = game.players.find(
-        (player) => player.id === nightTargetPlayerId,
-      );
-
-      nextGame = {
-        ...nextGame,
-        setupState: {
-          ...nextGame.setupState,
-          butlerMasterPlayerIds: {
-            ...(nextGame.setupState.butlerMasterPlayerIds ?? {}),
-            [currentNightActorPlayer.id]: nightTargetPlayerId,
-          },
-        },
-        updatedAt: new Date().toISOString(),
-      };
-
-      const referenceNote = [
-        "管家行动：",
-        `主人：${target ? `${target.seatNumber}. ${target.displayName}` : "未知玩家"}`,
-        "白天投票时，系统会提示并限制管家只能在主人投票时投票。",
-      ].join("\n");
-
-      generatedNote = generatedNote
-        ? `${generatedNote}\n\n${referenceNote}`
-        : referenceNote;
-    }
-
-    if (currentNightCharacter?.id === "ravenkeeper" && nightTargetPlayerId) {
-      const target = game.players.find(
-        (player) => player.id === nightTargetPlayerId,
-      );
-      const targetCharacter = target ? getRealCharacter(target) : undefined;
-      const referenceNote = [
-        "守鸦人规则参考：",
-        `选择目标：${target ? `${target.seatNumber}. ${target.displayName}` : "未知玩家"}`,
-        targetCharacter
-          ? `真实角色：${targetCharacter.nameZh} / ${targetCharacter.nameEn}`
-          : "真实角色：未知",
-        currentNightActionFails
-          ? "守鸦人中毒，本次信息失败。"
-          : "最终告知内容仍由说书人决定。",
-      ].join("\n");
-
-      generatedNote = generatedNote
-        ? `${generatedNote}\n\n${referenceNote}`
-        : referenceNote;
-    }
-
-    if (
-      currentNightCharacter?.id === "imp" &&
-      nightTargetPlayerId &&
-      currentNightActionFails
-    ) {
-      const target = game.players.find(
-        (player) => player.id === nightTargetPlayerId,
-      );
-
-      const failureNote = target
-        ? `Imp was poisoned; attack on ${target.seatNumber}. ${target.displayName} failed and no death was marked.`
-        : "Imp was poisoned; no death was marked.";
-
-      generatedNote = generatedNote
-        ? `${generatedNote}\n\n${failureNote}`
-        : failureNote;
-    }
-
-    if (
-      currentNightCharacter?.id === "imp" &&
-      nightTargetPlayerId &&
-      !currentNightActionFails
-    ) {
-      const target = game.players.find(
-        (player) => player.id === nightTargetPlayerId,
-      );
-      const targetCharacter = target ? getRealCharacter(target) : undefined;
-      let impResultNote = target
-        ? `System marked ${target.seatNumber}. ${target.displayName} dead from the Imp attack.`
-        : "System marked the Imp attack target dead.";
-
-      if (nightTargetPlayerId === nightProtectedPlayerId) {
-        impResultNote = target
-          ? `${target.seatNumber}. ${target.displayName} was protected by the Monk; no death was marked.`
-          : "The Imp attack target was protected by the Monk; no death was marked.";
-      } else if (targetCharacter?.id === "soldier" && !target?.isPoisoned) {
-        impResultNote = target
-          ? `${target.seatNumber}. ${target.displayName} is an unpoisoned Soldier; no death was marked.`
-          : "The Imp attacked a Soldier; no death was marked.";
-      } else if (
-        targetCharacter?.id === "mayor" &&
-        !target?.isPoisoned &&
-        nightMayorRedirectPlayerId
-      ) {
-        const redirectTarget = game.players.find(
-          (player) => player.id === nightMayorRedirectPlayerId,
-        );
-        const redirectCharacter = redirectTarget
-          ? getRealCharacter(redirectTarget)
-          : undefined;
-
-        if (redirectCharacter?.id === "soldier" && !redirectTarget?.isPoisoned) {
-          impResultNote = redirectTarget
-            ? `The Mayor redirect target was ${redirectTarget.seatNumber}. ${redirectTarget.displayName}, an unpoisoned Soldier; no death was marked.`
-            : "The Mayor attack redirected to a Soldier; no death was marked.";
-        } else {
-          nextGame = {
-            ...nextGame,
-            players: nextGame.players.map((player) =>
-              player.id === nightMayorRedirectPlayerId
-                ? {
-                    ...player,
-                    isAlive: false,
-                  }
-                : player,
-            ),
-            updatedAt: new Date().toISOString(),
-          };
-
-          impResultNote = redirectTarget
-            ? `The Storyteller redirected the Imp attack from the Mayor to ${redirectTarget.seatNumber}. ${redirectTarget.displayName}; the redirected target was marked dead.`
-            : "The Storyteller redirected the Imp attack from the Mayor; the redirected target was marked dead.";
-        }
-      } else if (currentNightActorPlayer?.id === nightTargetPlayerId) {
-        const replacementMinion = nextGame.players.find((player) => {
-          const character = getRealCharacter(player);
-
-          return (
-            player.isAlive &&
-            player.id !== currentNightActorPlayer.id &&
-            character?.type === "minion"
-          );
-        });
-
-        nextGame = {
-          ...nextGame,
-          players: nextGame.players.map((player) =>
-            player.id === nightTargetPlayerId
-              ? {
-                  ...player,
-                  isAlive: false,
-                }
-              : player,
-          ),
-          updatedAt: new Date().toISOString(),
-        };
-
-        if (replacementMinion) {
-          nextGame = {
-            ...nextGame,
-            players: nextGame.players.map((player) =>
-              player.id === replacementMinion.id
-                ? {
-                    ...player,
-                    characterId: "imp",
-                    alignment: "evil",
-                    registeredAlignment: "evil",
-                    registeredCharacterId: "imp",
-                  }
-                : player,
-            ),
-            updatedAt: new Date().toISOString(),
-          };
-        }
-
-        impResultNote = replacementMinion
-          ? `Imp chose themself; ${replacementMinion.seatNumber}. ${replacementMinion.displayName} became the new Imp.`
-          : "Imp chose themself; no living Minion was available for replacement.";
-      } else {
-        nextGame = {
-          ...nextGame,
-          players: nextGame.players.map((player) =>
-            player.id === nightTargetPlayerId
-              ? {
-                  ...player,
-                  isAlive: false,
-                }
-              : player,
-          ),
-          updatedAt: new Date().toISOString(),
-        };
-      }
-
-      const referenceNote = [
-        "Imp action:",
-        `Attack target: ${target ? `${target.seatNumber}. ${target.displayName}` : "unknown player"}`,
-        `Result reference: ${impResultNote}`,
-      ].join("\n");
-
-      generatedNote = generatedNote
-        ? `${generatedNote}\n\n${referenceNote}`
-        : referenceNote;
-
-      setNightProtectedPlayerId("");
-    }
-
-updateGame(completeCurrentNightStep(nextGame, generatedNote));
-setNightActionNote("");
-setNightTargetPlayerId("");
-setNightSecondTargetPlayerId("");
-setNightSelectedCharacterId("");
-setNightInfoNoRoleInPlay(false);
-setNightReferenceNumber(0);
-setNightYesNoAnswer("no");
-setNightMayorRedirectPlayerId("");
-setNightRegistrationOverrides({});
+    submitGameAction({
+      type: "APPLY_NIGHT_ACTION",
+      payload: {
+        stepId: currentNightStep?.id,
+        characterId: currentNightStep?.characterId,
+        actorPlayerId: currentNightActorPlayer?.id,
+        targetPlayerIds: [
+          nightTargetPlayerId,
+          nightSecondTargetPlayerId,
+        ].filter(Boolean),
+        selectedCharacterId: nightSelectedCharacterId || undefined,
+        note: nightActionNote,
+        infoNoRoleInPlay: nightInfoNoRoleInPlay,
+        referenceNumber: nightReferenceNumber,
+        yesNoAnswer: nightYesNoAnswer,
+        protectedPlayerId: game.setupState.monkProtectedPlayerId,
+        mayorRedirectPlayerId: nightMayorRedirectPlayerId || undefined,
+        registrationOverrides: nightRegistrationOverrides,
+        createdAt: new Date().toISOString(),
+      },
+    });
+    setNightActionNote("");
+    setNightTargetPlayerId("");
+    setNightSecondTargetPlayerId("");
+    setNightSelectedCharacterId("");
+    setNightInfoNoRoleInPlay(false);
+    setNightReferenceNumber(0);
+    setNightYesNoAnswer("no");
+    setNightMayorRedirectPlayerId("");
+    setNightRegistrationOverrides({});
   }
 
   function handleResetNightActions() {
@@ -1071,17 +598,21 @@ setNightRegistrationOverrides({});
       return;
     }
 
-updateGame(resetNightActions(game));
-setNightActionNote("");
-setNightTargetPlayerId("");
-setNightSecondTargetPlayerId("");
-setNightSelectedCharacterId("");
-setNightInfoNoRoleInPlay(false);
-setNightReferenceNumber(0);
-setNightProtectedPlayerId("");
-setNightYesNoAnswer("no");
-setNightMayorRedirectPlayerId("");
-setNightRegistrationOverrides({});
+    submitGameAction({
+      type: "RESET_NIGHT_ACTIONS",
+      payload: {
+        createdAt: new Date().toISOString(),
+      },
+    });
+    setNightActionNote("");
+    setNightTargetPlayerId("");
+    setNightSecondTargetPlayerId("");
+    setNightSelectedCharacterId("");
+    setNightInfoNoRoleInPlay(false);
+    setNightReferenceNumber(0);
+    setNightYesNoAnswer("no");
+    setNightMayorRedirectPlayerId("");
+    setNightRegistrationOverrides({});
   }
 
   function formatSeconds(totalSeconds: number): string {
@@ -1092,65 +623,110 @@ setNightRegistrationOverrides({});
   }
 
   function handleStartPrivateChatTimer() {
-    if (!game) {
-      return;
-    }
-
-    setPrivateChatSecondsRemaining(privateChatMinutes * 60);
-    setIsPrivateChatTimerRunning(true);
-    updateGame(logPrivateChatStarted(game, privateChatMinutes));
+  if (!game) {
+    return;
   }
 
-  function handleEndPrivateChatTimer() {
-    if (!game) {
-      return;
-    }
+  setPrivateChatSecondsRemaining(privateChatMinutes * 60);
+  setIsPrivateChatTimerRunning(true);
+  submitGameAction({
+    type: "ADD_MANUAL_NOTE",
+    payload: {
+      title: "\u79c1\u804a\u5f00\u59cb",
+      description: `\u8bf4\u4e66\u4eba\u5f00\u59cb\u4e86 ${privateChatMinutes} \u5206\u949f\u79c1\u804a\u3002`,
+      metadata: {
+        minutes: privateChatMinutes,
+      },
+      createdAt: new Date().toISOString(),
+    },
+  });
+}
 
-    setIsPrivateChatTimerRunning(false);
-    updateGame(logPrivateChatEnded(game));
+function handleEndPrivateChatTimer() {
+  if (!game) {
+    return;
   }
 
-  function handleStartOpenDiscussionTimer() {
-    if (!game) {
-      return;
-    }
+  setIsPrivateChatTimerRunning(false);
+  submitGameAction({
+    type: "ADD_MANUAL_NOTE",
+    payload: {
+      title: "\u79c1\u804a\u7ed3\u675f",
+      description: "\u8bf4\u4e66\u4eba\u7ed3\u675f\u4e86\u79c1\u804a\u9636\u6bb5\u3002",
+      createdAt: new Date().toISOString(),
+    },
+  });
+}
 
-    setOpenDiscussionSecondsRemaining(openDiscussionMinutes * 60);
-    setIsOpenDiscussionTimerRunning(true);
-    updateGame(logOpenDiscussionStarted(game, openDiscussionMinutes));
+function handleStartOpenDiscussionTimer() {
+  if (!game) {
+    return;
   }
 
-  function handleEndOpenDiscussionTimer() {
-    if (!game) {
-      return;
-    }
+  setOpenDiscussionSecondsRemaining(openDiscussionMinutes * 60);
+  setIsOpenDiscussionTimerRunning(true);
+  submitGameAction({
+    type: "ADD_MANUAL_NOTE",
+    payload: {
+      title: "\u5927\u516c\u804a\u5f00\u59cb",
+      description: `\u8bf4\u4e66\u4eba\u5f00\u59cb\u4e86 ${openDiscussionMinutes} \u5206\u949f\u5927\u516c\u804a\u3002`,
+      metadata: {
+        minutes: openDiscussionMinutes,
+      },
+      createdAt: new Date().toISOString(),
+    },
+  });
+}
 
-    setIsOpenDiscussionTimerRunning(false);
-    updateGame(logOpenDiscussionEnded(game));
+function handleEndOpenDiscussionTimer() {
+  if (!game) {
+    return;
   }
 
-  function handleGenerateSpeechOrder() {
-    if (!game || !speechStartPlayerId) {
-      return;
-    }
+  setIsOpenDiscussionTimerRunning(false);
+  submitGameAction({
+    type: "ADD_MANUAL_NOTE",
+    payload: {
+      title: "\u5927\u516c\u804a\u7ed3\u675f",
+      description: "\u8bf4\u4e66\u4eba\u7ed3\u675f\u4e86\u5927\u516c\u804a\u9636\u6bb5\u3002",
+      createdAt: new Date().toISOString(),
+    },
+  });
+}
 
-    const order = generateSpeechOrder({
-      players: sortedPlayers,
-      startPlayerId: speechStartPlayerId,
-      direction: speechDirection,
-    });
+function handleGenerateSpeechOrder() {
+  if (!game || !speechStartPlayerId) {
+    return;
+  }
 
-    setSpeechOrderPlayerIds(order.map((player) => player.id));
+  const order = generateSpeechOrder({
+    players: sortedPlayers,
+    startPlayerId: speechStartPlayerId,
+    direction: speechDirection,
+  });
 
-    updateGame(
-      logSpeechOrderGenerated({
-        game,
-        order,
+  setSpeechOrderPlayerIds(order.map((player) => player.id));
+  const startPlayer = game.players.find(
+    (player) => player.id === speechStartPlayerId,
+  );
+
+  submitGameAction({
+    type: "ADD_MANUAL_NOTE",
+    payload: {
+      title: "\u751f\u6210\u987a\u5e8f\u53d1\u8a00",
+      description: `\u4ece ${startPlayer?.displayName ?? "\u672a\u77e5\u73a9\u5bb6"} \u5f00\u59cb\uff0c\u6309${
+        speechDirection === "clockwise" ? "\u987a\u65f6\u9488" : "\u9006\u65f6\u9488"
+      } \u65b9\u5411\u53d1\u8a00\u3002`,
+      metadata: {
         startPlayerId: speechStartPlayerId,
         direction: speechDirection,
-      }),
-    );
-  }
+        speechOrderPlayerIds: order.map((player) => player.id),
+        speechOrderNames: order.map((player) => player.displayName),
+      },
+      createdAt: new Date().toISOString(),
+    },
+  });
+}
 
   if (!hasLoaded) {
     return (
@@ -1166,7 +742,7 @@ setNightRegistrationOverrides({});
         <div className="mx-auto max-w-3xl rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
           <h1 className="text-2xl font-bold">找不到这局游戏</h1>
           <p className="mt-2 text-sm text-gray-600">
-            这局游戏可能没有保存在当前浏览器的 localStorage 中。
+            这局游戏可能没有保存在当前浏览器的本地存储中。
           </p>
           <Link
             href="/games/new"
@@ -1354,8 +930,10 @@ const undertakerExecutedCharacter = undertakerExecutedPlayer
   ? getRealCharacter(undertakerExecutedPlayer)
   : undefined;
 
-const nightProtectedPlayer = nightProtectedPlayerId
-  ? game.players.find((player) => player.id === nightProtectedPlayerId)
+const nightProtectedPlayer = game.setupState.monkProtectedPlayerId
+  ? game.players.find(
+      (player) => player.id === game.setupState.monkProtectedPlayerId,
+    )
   : undefined;
 
 const isSingleTargetNightCharacter =
@@ -1427,7 +1005,17 @@ function handleAddDaySubPhaseNote() {
     return;
   }
 
-  updateGame(createManualNoteLog(game, daySubPhaseNote.trim()));
+  submitGameAction({
+    type: "ADD_MANUAL_NOTE",
+    payload: {
+      title: "\u624b\u52a8\u5907\u6ce8",
+      description: daySubPhaseNote.trim(),
+      metadata: {
+        editable: true,
+      },
+      createdAt: new Date().toISOString(),
+    },
+  });
   setDaySubPhaseNote("");
 }
 
@@ -1488,7 +1076,7 @@ function renderTemporaryRegistrationControls(entry: NonNullable<typeof firstNigh
           <option value="">默认角色</option>
           {allScriptCharacters.map((character) => (
             <option key={character.id} value={character.id}>
-              {character.nameZh} / {character.nameEn}
+              {character.nameZh}
             </option>
           ))}
         </select>
@@ -1500,20 +1088,23 @@ function renderTemporaryRegistrationControls(entry: NonNullable<typeof firstNigh
   return (
     <main className="min-h-screen w-full px-4 py-8 sm:px-6 lg:px-8 xl:px-10">
       <div className="mb-8">
-        <Link href="/games/new" className="text-sm text-gray-500 hover:underline">
-          ← 返回创建对局
-        </Link>
+        <div className="flex flex-wrap gap-3 text-sm text-gray-500">
+          <Link href="/" className="hover:underline">
+            返回首页
+          </Link>
+          <Link href="/games/new" className="hover:underline">
+            返回创建本地对局
+          </Link>
+        </div>
 
         <div className="mt-4 flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-sm text-gray-500">Storyteller View</p>
+            <p className="text-sm text-gray-500">说书人视角</p>
             <h1 className="mt-1 text-3xl font-bold tracking-tight">
               对局控制台
             </h1>
             <p className="mt-2 text-sm text-gray-600">
-              {script
-                ? `${script.nameZh} / ${script.nameEn}`
-                : `未知板子：${game.scriptId}`}
+              {script ? script.nameZh : "未知剧本"}
             </p>
           </div>
 
@@ -1533,7 +1124,9 @@ function renderTemporaryRegistrationControls(entry: NonNullable<typeof firstNigh
           <div className="mt-5 space-y-4 text-sm">
             <div>
               <div className="text-gray-500">状态</div>
-              <div className="mt-1 font-medium">{game.status}</div>
+              <div className="mt-1 font-medium">
+                {gameStatusLabels[game.status]}
+              </div>
             </div>
 
             <div>
@@ -1549,27 +1142,6 @@ function renderTemporaryRegistrationControls(entry: NonNullable<typeof firstNigh
                 <div className="mt-1 font-medium">
                   {daySubPhaseLabels[game.currentDaySubPhase]}
                 </div>
-              </div>
-            ) : null}
-
-            {game.currentPhase === "day" && game.currentDaySubPhase ? (
-              <div className="rounded-xl bg-gray-50 p-3">
-                <div className="text-gray-500">{"\u8bf4\u4e66\u4eba\u5907\u6ce8"}</div>
-                <textarea
-                  value={daySubPhaseNote}
-                  onChange={(event) => setDaySubPhaseNote(event.target.value)}
-                  rows={3}
-                  placeholder={"\u8bb0\u5f55\u5f53\u524d\u767d\u5929\u5c0f\u9636\u6bb5\u53d1\u751f\u7684\u4e8b\u60c5"}
-                  className="mt-2 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-gray-400"
-                />
-                <button
-                  type="button"
-                  onClick={handleAddDaySubPhaseNote}
-                  disabled={!daySubPhaseNote.trim()}
-                  className="mt-2 w-full rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-40"
-                >
-                  {"\u6dfb\u52a0\u5907\u6ce8"}
-                </button>
               </div>
             ) : null}
 
@@ -1626,9 +1198,9 @@ function renderTemporaryRegistrationControls(entry: NonNullable<typeof firstNigh
 
             <div className="relative mx-auto aspect-square w-full max-w-4xl rounded-full border border-gray-200 bg-gray-50">
               <div className="absolute left-1/2 top-1/2 flex h-32 w-32 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-gray-200 bg-white text-center text-sm text-gray-600 shadow-sm">
-                Storyteller
+                说书人
                 <br />
-                Grimoire
+                魔典
               </div>
 
               {sortedPlayers.map((player, index) => {
@@ -1747,7 +1319,7 @@ function renderTemporaryRegistrationControls(entry: NonNullable<typeof firstNigh
                               ) : null}
                             </div>
                             <div className="shrink-0 text-xs text-gray-500">
-                              D{log.day} · {phaseLabels[log.phase]}
+                              第 {log.day} 天 · {phaseLabels[log.phase]}
                             </div>
                           </div>
                         </div>
@@ -1797,7 +1369,7 @@ function renderTemporaryRegistrationControls(entry: NonNullable<typeof firstNigh
 {currentNightCharacter ? (
   <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4 text-sm">
     <div className="font-medium text-gray-800">
-      当前角色：{currentNightCharacter.nameZh} / {currentNightCharacter.nameEn}
+      当前角色：{currentNightCharacter.nameZh}
     </div>
 
     {currentNightActorPlayer ? (
@@ -1817,7 +1389,7 @@ function renderTemporaryRegistrationControls(entry: NonNullable<typeof firstNigh
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 leading-5 text-amber-800">
             该玩家真实角色是酒鬼，当前按照表面角色{" "}
             {currentNightActorApparentCharacter
-              ? `${currentNightActorApparentCharacter.nameZh} / ${currentNightActorApparentCharacter.nameEn}`
+              ? currentNightActorApparentCharacter.nameZh
               : "未知角色"}{" "}
             行动。其获得的信息不具备规则参考价值，可由说书人任意给出。
           </div>
@@ -1829,7 +1401,7 @@ function renderTemporaryRegistrationControls(entry: NonNullable<typeof firstNigh
           currentNightActorApparentCharacter.id ? (
           <div>
             真实角色：{currentNightActorRealCharacter.nameZh} /{" "}
-            {currentNightActorRealCharacter.nameEn}
+            {currentNightActorRealCharacter.nameZh}
           </div>
         ) : null}
       </div>
@@ -1860,7 +1432,7 @@ function renderTemporaryRegistrationControls(entry: NonNullable<typeof firstNigh
                 <li key={entry.player.id}>
                   {entry.player.seatNumber}. {entry.player.displayName}：登记角色{" "}
                   {entry.registeredCharacter
-                    ? `${entry.registeredCharacter.nameZh} / ${entry.registeredCharacter.nameEn}`
+                    ? entry.registeredCharacter.nameZh
                     : "未知"}
                 </li>
               ) : null,
@@ -1924,11 +1496,11 @@ function renderTemporaryRegistrationControls(entry: NonNullable<typeof firstNigh
           第一名玩家：{firstNightInfoPlayer.player.seatNumber}.{" "}
           {firstNightInfoPlayer.player.displayName} / 真实角色：
           {firstNightInfoPlayer.realCharacter
-            ? `${firstNightInfoPlayer.realCharacter.nameZh} / ${firstNightInfoPlayer.realCharacter.nameEn}`
+            ? firstNightInfoPlayer.realCharacter.nameZh
             : "未知"}{" "}
           / 登记角色：
           {firstNightInfoPlayer.registeredCharacter
-            ? `${firstNightInfoPlayer.registeredCharacter.nameZh} / ${firstNightInfoPlayer.registeredCharacter.nameEn}`
+            ? firstNightInfoPlayer.registeredCharacter.nameZh
             : "未知"}{" "}
           / 登记阵营：
           {firstNightInfoPlayer.registeredAlignment === "evil"
@@ -1950,11 +1522,11 @@ function renderTemporaryRegistrationControls(entry: NonNullable<typeof firstNigh
           第二名玩家：{secondNightInfoPlayer.player.seatNumber}.{" "}
           {secondNightInfoPlayer.player.displayName} / 真实角色：
           {secondNightInfoPlayer.realCharacter
-            ? `${secondNightInfoPlayer.realCharacter.nameZh} / ${secondNightInfoPlayer.realCharacter.nameEn}`
+            ? secondNightInfoPlayer.realCharacter.nameZh
             : "未知"}{" "}
           / 登记角色：
           {secondNightInfoPlayer.registeredCharacter
-            ? `${secondNightInfoPlayer.registeredCharacter.nameZh} / ${secondNightInfoPlayer.registeredCharacter.nameEn}`
+            ? secondNightInfoPlayer.registeredCharacter.nameZh
             : "未知"}{" "}
           / 登记阵营：
           {secondNightInfoPlayer.registeredAlignment === "evil"
@@ -2025,7 +1597,7 @@ function renderTemporaryRegistrationControls(entry: NonNullable<typeof firstNigh
         <option value="">请选择</option>
         {currentNightInfoCharacters.map((character) => (
           <option key={character.id} value={character.id}>
-            {character.nameZh} / {character.nameEn}
+            {character.nameZh}
           </option>
         ))}
       </select>
@@ -2350,7 +1922,7 @@ function renderTemporaryRegistrationControls(entry: NonNullable<typeof firstNigh
           <div className="mt-1">
             真实角色：
             {undertakerExecutedCharacter
-              ? `${undertakerExecutedCharacter.nameZh} / ${undertakerExecutedCharacter.nameEn}`
+              ? undertakerExecutedCharacter.nameZh
               : "未分配"}
           </div>
         </>
@@ -2428,6 +2000,30 @@ function renderTemporaryRegistrationControls(entry: NonNullable<typeof firstNigh
                   用于控制私聊、顺序发言和大公聊。私聊和大公聊计时结束后会自动进入下一阶段。
                 </p>
               </div>
+
+              {game.currentDaySubPhase ? (
+                <div className="mb-5 rounded-2xl bg-gray-50 p-4">
+                  <h3 className="font-semibold">?????</h3>
+                  <p className="mt-1 text-xs text-gray-500">
+                    ???????????????
+                  </p>
+                  <textarea
+                    value={daySubPhaseNote}
+                    onChange={(event) => setDaySubPhaseNote(event.target.value)}
+                    rows={3}
+                    placeholder="??????????????????????"
+                    className="mt-3 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-gray-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddDaySubPhaseNote}
+                    disabled={!daySubPhaseNote.trim()}
+                    className="mt-2 rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-40"
+                  >
+                    ????
+                  </button>
+                </div>
+              ) : null}
 
               <div className="grid gap-5 lg:grid-cols-3">
                 <div className="rounded-2xl bg-gray-50 p-4">
@@ -2869,7 +2465,7 @@ function renderTemporaryRegistrationControls(entry: NonNullable<typeof firstNigh
                       <div className="text-gray-500">角色</div>
                       <div className="mt-1 font-medium">
                         {character
-                          ? `${character.nameZh} / ${character.nameEn}`
+                          ? character.nameZh
                           : "未分配"}
                       </div>
 
@@ -2894,10 +2490,14 @@ function renderTemporaryRegistrationControls(entry: NonNullable<typeof firstNigh
                       <button
                         type="button"
                         onClick={() =>
-                          updatePlayer(player.id, (currentPlayer) => ({
-                            ...currentPlayer,
-                            isAlive: !currentPlayer.isAlive,
-                          }))
+                          submitGameAction({
+                            type: "UPDATE_PLAYER_STATUS",
+                            payload: {
+                              playerId: player.id,
+                              isAlive: !player.isAlive,
+                              createdAt: new Date().toISOString(),
+                            },
+                          })
                         }
                         className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700"
                       >
@@ -2907,10 +2507,14 @@ function renderTemporaryRegistrationControls(entry: NonNullable<typeof firstNigh
                       <button
                         type="button"
                         onClick={() =>
-                          updatePlayer(player.id, (currentPlayer) => ({
-                            ...currentPlayer,
-                            isDrunk: !currentPlayer.isDrunk,
-                          }))
+                          submitGameAction({
+                            type: "UPDATE_PLAYER_STATUS",
+                            payload: {
+                              playerId: player.id,
+                              isDrunk: !player.isDrunk,
+                              createdAt: new Date().toISOString(),
+                            },
+                          })
                         }
                         className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700"
                       >
@@ -2920,10 +2524,14 @@ function renderTemporaryRegistrationControls(entry: NonNullable<typeof firstNigh
                       <button
                         type="button"
                         onClick={() =>
-                          updatePlayer(player.id, (currentPlayer) => ({
-                            ...currentPlayer,
-                            isPoisoned: !currentPlayer.isPoisoned,
-                          }))
+                          submitGameAction({
+                            type: "UPDATE_PLAYER_STATUS",
+                            payload: {
+                              playerId: player.id,
+                              isPoisoned: !player.isPoisoned,
+                              createdAt: new Date().toISOString(),
+                            },
+                          })
                         }
                         className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700"
                       >
@@ -2993,13 +2601,13 @@ function renderTemporaryRegistrationControls(entry: NonNullable<typeof firstNigh
 
           <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-xl font-semibold">Game Logs</h2>
+              <h2 className="text-xl font-semibold">对局日志</h2>
               <button
                 type="button"
                 onClick={handleExportLogsJson}
                 className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700"
               >
-                Export JSON
+                导出日志
               </button>
             </div>
 
@@ -3017,20 +2625,20 @@ function renderTemporaryRegistrationControls(entry: NonNullable<typeof firstNigh
                 }
                 className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm"
               >
-                <option value="timeline">Timeline</option>
-                <option value="by_day">By day</option>
-                <option value="by_category">By category</option>
-                <option value="by_player">By player</option>
+                <option value="timeline">时间线</option>
+                <option value="by_day">按天数</option>
+                <option value="by_category">按类别</option>
+                <option value="by_player">按玩家</option>
               </select>
               <select
                 value={logCategoryFilter}
                 onChange={(event) => setLogCategoryFilter(event.target.value)}
                 className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm"
               >
-                <option value="">All categories</option>
+                <option value="">全部类别</option>
                 {logCategories.map((category) => (
                   <option key={category} value={category}>
-                    {category}
+                    {getLogCategoryLabel(category)}
                   </option>
                 ))}
               </select>
@@ -3039,7 +2647,7 @@ function renderTemporaryRegistrationControls(entry: NonNullable<typeof firstNigh
                 onChange={(event) => setLogPlayerFilter(event.target.value)}
                 className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm"
               >
-                <option value="">All players</option>
+                <option value="">全部玩家</option>
                 {sortedPlayers.map((player) => (
                   <option key={player.id} value={player.id}>
                     {player.seatNumber}. {player.displayName}
@@ -3049,7 +2657,7 @@ function renderTemporaryRegistrationControls(entry: NonNullable<typeof firstNigh
             </div>
 
             <div className="mt-2 text-xs text-gray-500">
-              View: {logViewMode} ? Showing {filteredLogs.length} / {game.logs.length}
+              视图：{logViewModeLabels[logViewMode]} · 显示 {filteredLogs.length} / {game.logs.length}
             </div>
 
             {filteredLogs.length > 0 ? (
@@ -3064,13 +2672,13 @@ function renderTemporaryRegistrationControls(entry: NonNullable<typeof firstNigh
                         </pre>
                         {log.correction ? (
                           <div className="mt-2 rounded-lg bg-white p-2 text-xs text-gray-600">
-                            Correction target: {log.correction.correctedLogId}
+                            纠错目标：{log.correction.correctedLogId}
                           </div>
                         ) : null}
                       </div>
                       <div className="shrink-0 text-right text-xs text-gray-500">
-                        <div>{log.category}</div>
-                        <div>D{log.day} ? {phaseLabels[log.phase]}</div>
+                        <div>{getLogCategoryLabel(log.category)}</div>
+                        <div>第 {log.day} 天 · {phaseLabels[log.phase]}</div>
                         <div>{new Date(log.timestamp).toLocaleString()}</div>
                       </div>
                     </div>
@@ -3078,7 +2686,7 @@ function renderTemporaryRegistrationControls(entry: NonNullable<typeof firstNigh
                 ))}
               </div>
             ) : (
-              <p className="mt-4 text-sm text-gray-500">No logs.</p>
+              <p className="mt-4 text-sm text-gray-500">暂无日志。</p>
             )}
           </div>
         </section>

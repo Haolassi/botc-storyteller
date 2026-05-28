@@ -54,13 +54,13 @@ export function CharacterPicker({
       <div className="flex items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold tracking-tight">
-            Character picker
+            角色选择器
           </h2>
           <p className="text-sm text-muted-foreground">
-            Choose characters for a draft script.
+            为草稿剧本选择角色。
           </p>
         </div>
-        <Badge variant="secondary">{selectedIds.length} selected</Badge>
+        <Badge variant="secondary">已选 {selectedIds.length} 个</Badge>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -101,7 +101,7 @@ export function CharacterPicker({
 
                     <span className="min-w-0 space-y-1">
                       <span className="block font-medium">
-                        {character.nameZh} / {character.nameEn}
+                        {character.nameZh}
                       </span>
                       <span className="block text-xs leading-5 text-muted-foreground">
                         {character.abilitySummaryZh}

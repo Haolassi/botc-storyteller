@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { ArrowLeft, Plus } from "lucide-react";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { ResourceCard } from "@/components/shared/resource-card";
@@ -14,16 +14,24 @@ export default function ScriptsPage() {
   return (
     <div className="space-y-8">
       <PageHeader
-        eyebrow="Scripts"
-        title="Script library"
-        description="Browse built-in and custom social deduction scripts. Built-in scripts reference the shared character library."
+        eyebrow="剧本"
+        title="剧本库"
+        description="查看内置剧本的角色构成、夜晚顺序和角色能力说明。"
         actions={
-          <Button asChild>
-            <Link href="/scripts/new">
-              <Plus aria-hidden="true" />
-              New Script
-            </Link>
-          </Button>
+          <>
+            <Button asChild variant="outline">
+              <Link href="/">
+                <ArrowLeft aria-hidden="true" />
+                返回首页
+              </Link>
+            </Button>
+            <Button asChild>
+              <Link href="/scripts/new">
+                <Plus aria-hidden="true" />
+                新建剧本
+              </Link>
+            </Button>
+          </>
         }
       />
 
@@ -36,9 +44,9 @@ export default function ScriptsPage() {
             <ResourceCard
               key={script.id}
               href={`/scripts/${script.id}`}
-              title={`${script.nameZh} / ${script.nameEn}`}
+              title={script.nameZh}
               description={`镇民 ${counts.townsfolk} · 外来者 ${counts.outsider} · 爪牙 ${counts.minion} · 恶魔 ${counts.demon}`}
-              meta={`${script.minPlayers}-${script.maxPlayers} players`}
+              meta={`${script.minPlayers}-${script.maxPlayers} 人`}
             />
           );
         })}

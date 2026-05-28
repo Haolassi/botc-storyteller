@@ -189,6 +189,10 @@ export function completeCurrentNightStep(
 export function resetNightActions(game: Game): Game {
   const nextGame: Game = {
     ...game,
+    setupState: {
+      ...game.setupState,
+      monkProtectedPlayerId: undefined,
+    },
     nightActionState: {
       day: game.currentDay,
       currentStepIndex: 0,

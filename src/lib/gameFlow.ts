@@ -53,6 +53,7 @@ export function addGameLog(
     description?: string;
     payload?: Record<string, unknown>;
     category?: GameLogEntry["category"];
+    visibility?: GameLogEntry["visibility"];
     actorPlayerId?: string;
     targetPlayerIds?: string[];
     characterId?: string;

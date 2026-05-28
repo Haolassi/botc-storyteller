@@ -32,7 +32,7 @@ export function ResourceCard({
           <Link
             href={href}
             className="inline-flex size-8 items-center justify-center rounded-md border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            aria-label={`Open ${title}`}
+            aria-label={`打开 ${title}`}
           >
             <ArrowRight className="size-4" aria-hidden="true" />
           </Link>

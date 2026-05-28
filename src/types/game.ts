@@ -194,6 +194,7 @@ export interface GameSetupState {
   butlerMasterPlayerIds?: Record<string, string>;
   triggeredVirginPlayerIds?: string[];
   usedDeadVotePlayerIds?: string[];
+  monkProtectedPlayerId?: string;
 }
 
 export interface GamePlayer {
