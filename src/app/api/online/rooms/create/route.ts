@@ -36,7 +36,16 @@ export async function POST(request: Request) {
     );
   }
 
-  const supabase = createServiceSupabaseClient();
+  let supabase: ReturnType<typeof createServiceSupabaseClient>;
+
+  try {
+    supabase = createServiceSupabaseClient();
+  } catch (error) {
+    return NextResponse.json(
+      { error: getErrorMessage(error) },
+      { status: 500 },
+    );
+  }
   const userId = crypto.randomUUID();
 
   for (let attempt = 0; attempt < MAX_ROOM_CODE_ATTEMPTS; attempt += 1) {

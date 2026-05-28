@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.11.1 - Vercel Create Room Hotfix
+
+Release notes: [docs/releases/v0.11.1.md](docs/releases/v0.11.1.md)
+
+### Fixed
+
+- Fixed the online create-room page crashing on empty or non-JSON API responses in deployed environments.
+- Added JSON error handling for missing Supabase server environment variables in the create-room API.
+- Improved Chinese error messages for online room creation failures.
+
+### Notes
+
+- No game rules, local play behavior, or remote action logic were changed.
+
 ## v0.11.0 - Online Multiplayer MVP
 
 Release notes: [docs/releases/v0.11.0.md](docs/releases/v0.11.0.md)

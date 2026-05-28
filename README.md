@@ -1,6 +1,6 @@
 # Storyteller Notes
 
-Version: `0.11.0`
+Version: `0.11.1`
 
 Storyteller Notes is a local-first Next.js utility for running social deduction games as a storyteller aid. It is designed to support offline, in-person play: the app records the storyteller's private backend state and provides rule references, but the storyteller still makes the final ruling and decides what information to give.
 
@@ -33,6 +33,7 @@ This project does not implement authentication, official artwork, or automatic f
 ## Release Notes
 
 - Changelog: [CHANGELOG.md](CHANGELOG.md)
+- v0.11.1 notes: [docs/releases/v0.11.1.md](docs/releases/v0.11.1.md)
 - v0.11.0 notes: [docs/releases/v0.11.0.md](docs/releases/v0.11.0.md)
 
 ## Data Policy
@@ -68,6 +69,14 @@ Run checks:
 npm run lint
 npm run build
 ```
+
+## Version 0.11.1 Scope
+
+The `0.11.1` version is a Vercel deployment hotfix:
+
+- Online room creation now handles empty or non-JSON API responses safely.
+- The create-room API returns JSON errors when Supabase server environment variables are missing.
+- The create-room page shows clearer Chinese error messages for deployment/runtime failures.
 
 ## Version 0.11 Scope
 

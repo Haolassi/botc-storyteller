@@ -18,6 +18,26 @@ type CreateRoomResponse =
       error: string;
     };
 
+async function readCreateRoomResponse(
+  response: Response,
+): Promise<CreateRoomResponse> {
+  const text = await response.text();
+
+  if (!text) {
+    return {
+      error: `创建房间失败：服务器返回空响应（${response.status}）。`,
+    };
+  }
+
+  try {
+    return JSON.parse(text) as CreateRoomResponse;
+  } catch {
+    return {
+      error: `创建房间失败：服务器返回了非 JSON 响应（${response.status}）。请检查 Vercel 环境变量和函数日志。`,
+    };
+  }
+}
+
 export default function OnlineCreatePage() {
   const router = useRouter();
   const [displayName, setDisplayName] = useState("");
@@ -45,7 +65,7 @@ export default function OnlineCreatePage() {
           displayName: trimmedDisplayName,
         }),
       });
-      const result = (await response.json()) as CreateRoomResponse;
+      const result = await readCreateRoomResponse(response);
 
       if (!response.ok || "error" in result) {
         setError("error" in result ? result.error : "创建房间失败。");
@@ -111,7 +131,7 @@ export default function OnlineCreatePage() {
           disabled={isSubmitting}
           className="mt-4"
         >
-          {isSubmitting ? "创建中" : "创建房间"}
+          {isSubmitting ? "创建中..." : "创建房间"}
         </Button>
       </section>
     </div>
