@@ -82,6 +82,16 @@ export async function POST(request: Request) {
   }
 
   if (existingMemberRow) {
+    if (existingMemberRow.role === "storyteller") {
+      return NextResponse.json(
+        {
+          error:
+            "This browser is already the storyteller for this room. Use another browser, incognito window, or create a new player identity.",
+        },
+        { status: 409 },
+      );
+    }
+
     const { data: updatedMemberRow, error: updateError } = await supabase
       .from("room_members")
       .update({

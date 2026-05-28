@@ -15,6 +15,12 @@ import { ArrowLeft } from "lucide-react";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
+import {
+  clearOnlineRoomIdentity,
+  getOnlineMemberId,
+  subscribeOnlineIdentityChange,
+  updateOnlineIdentity,
+} from "@/lib/online/browserIdentity";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import type { Game } from "@/types/game";
 import type { OnlineRoom, RoomMember } from "@/types/online";
@@ -87,16 +93,8 @@ const realtimeStatusLabels: Record<RealtimeStatus, string> = {
   disconnected: "已断开",
 };
 
-function subscribeOnlineMemberId(onStoreChange: () => void) {
-  window.addEventListener("storage", onStoreChange);
-
-  return () => {
-    window.removeEventListener("storage", onStoreChange);
-  };
-}
-
 function getOnlineMemberIdSnapshot() {
-  return window.localStorage.getItem("onlineMemberId");
+  return getOnlineMemberId();
 }
 
 function getServerOnlineMemberIdSnapshot() {
@@ -116,7 +114,7 @@ export function RoomWaitingClient({
   const [room, setRoom] = useState(initialRoom);
   const [members, setMembers] = useState(initialMembers);
   const onlineMemberId = useSyncExternalStore(
-    subscribeOnlineMemberId,
+    subscribeOnlineIdentityChange,
     getOnlineMemberIdSnapshot,
     getServerOnlineMemberIdSnapshot,
   );
@@ -156,7 +154,7 @@ export function RoomWaitingClient({
       }
 
       hasNavigatedRef.current = true;
-      window.localStorage.setItem("onlineGameId", gameId);
+      updateOnlineIdentity({ gameId });
       router.push(`/online/games/${gameId}`);
     },
     [router],
@@ -358,9 +356,7 @@ export function RoomWaitingClient({
         return;
       }
 
-      window.localStorage.removeItem("onlineMemberId");
-      window.localStorage.removeItem("onlineRoomId");
-      window.localStorage.removeItem("onlineGameId");
+      clearOnlineRoomIdentity();
       router.push("/online");
     } catch (caughtError) {
       setError(

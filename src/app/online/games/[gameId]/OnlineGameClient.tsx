@@ -13,6 +13,10 @@ import { ArrowLeft } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { getCurrentNightStep, getNightActorForStep } from "@/lib/nightActions";
+import {
+  getOnlineMemberId,
+  subscribeOnlineIdentityChange,
+} from "@/lib/online/browserIdentity";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import type { VisibleGameState } from "@/lib/visibility";
 import type { GameAction } from "@/types/actions";
@@ -90,16 +94,8 @@ const realtimeStatusLabels: Record<RealtimeStatus, string> = {
   disconnected: "已断开",
 };
 
-function subscribeOnlineMemberId(onStoreChange: () => void) {
-  window.addEventListener("storage", onStoreChange);
-
-  return () => {
-    window.removeEventListener("storage", onStoreChange);
-  };
-}
-
 function getOnlineMemberIdSnapshot() {
-  return window.localStorage.getItem("onlineMemberId");
+  return getOnlineMemberId();
 }
 
 function getServerOnlineMemberIdSnapshot() {
@@ -135,7 +131,7 @@ export function OnlineGameClient({
   const [viewerRole, setViewerRole] = useState<OnlineRoomRole>("spectator");
   const [member, setMember] = useState<RoomMember | null>(null);
   const onlineMemberId = useSyncExternalStore(
-    subscribeOnlineMemberId,
+    subscribeOnlineIdentityChange,
     getOnlineMemberIdSnapshot,
     getServerOnlineMemberIdSnapshot,
   );

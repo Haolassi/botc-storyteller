@@ -7,6 +7,7 @@ import { ArrowLeft } from "lucide-react";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
+import { setOnlineIdentity } from "@/lib/online/browserIdentity";
 import type { OnlineRoom, RoomMember } from "@/types/online";
 
 type CreateRoomResponse =
@@ -72,10 +73,12 @@ export default function OnlineCreatePage() {
         return;
       }
 
-      window.localStorage.setItem("onlineUserId", result.member.userId);
-      window.localStorage.setItem("onlineMemberId", result.member.id);
-      window.localStorage.setItem("onlineDisplayName", result.member.displayName);
-      window.localStorage.setItem("onlineRoomId", result.room.id);
+      setOnlineIdentity({
+        userId: result.member.userId,
+        memberId: result.member.id,
+        displayName: result.member.displayName,
+        roomId: result.room.id,
+      });
 
       router.push(`/online/rooms/${result.room.id}`);
     } catch (caughtError) {

@@ -7,6 +7,7 @@ import { ArrowLeft } from "lucide-react";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
+import { setOnlineIdentity } from "@/lib/online/browserIdentity";
 import type { OnlineRoom, RoomMember } from "@/types/online";
 
 type JoinRoomResponse =
@@ -43,7 +44,6 @@ export default function OnlineJoinPage() {
     setError(null);
 
     try {
-      const existingUserId = window.localStorage.getItem("onlineUserId");
       const response = await fetch("/api/online/rooms/join", {
         method: "POST",
         headers: {
@@ -52,20 +52,27 @@ export default function OnlineJoinPage() {
         body: JSON.stringify({
           roomCode: normalizedRoomCode,
           displayName: trimmedDisplayName,
-          userId: existingUserId || undefined,
         }),
       });
       const result = (await response.json()) as JoinRoomResponse;
 
       if (!response.ok || "error" in result) {
-        setError("error" in result ? result.error : "加入房间失败。");
+        setError(
+          response.status === 409
+            ? "当前浏览器已经以其他身份加入该房间。请使用无痕窗口、其他浏览器，或重新打开新的玩家身份。"
+            : "error" in result
+              ? result.error
+              : "加入房间失败。",
+        );
         return;
       }
 
-      window.localStorage.setItem("onlineUserId", result.member.userId);
-      window.localStorage.setItem("onlineMemberId", result.member.id);
-      window.localStorage.setItem("onlineDisplayName", result.member.displayName);
-      window.localStorage.setItem("onlineRoomId", result.room.id);
+      setOnlineIdentity({
+        userId: result.member.userId,
+        memberId: result.member.id,
+        displayName: result.member.displayName,
+        roomId: result.room.id,
+      });
 
       router.push(`/online/rooms/${result.room.id}`);
     } catch (caughtError) {
@@ -144,7 +151,7 @@ export default function OnlineJoinPage() {
           disabled={isSubmitting}
           className="mt-4"
         >
-          {isSubmitting ? "加入中" : "加入房间"}
+          {isSubmitting ? "加入中..." : "加入房间"}
         </Button>
       </section>
     </div>
