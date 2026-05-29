@@ -87,10 +87,10 @@ const statusLabels: Record<OnlineRoom["status"], string> = {
 };
 
 const realtimeStatusLabels: Record<RealtimeStatus, string> = {
-  connecting: "连接中",
-  connected: "已连接",
-  error: "连接异常",
-  disconnected: "已断开",
+  connecting: "连接中，自动刷新已启用",
+  connected: "实时连接正常",
+  error: "实时连接异常，已启用自动刷新",
+  disconnected: "已断开，已启用自动刷新",
 };
 
 function getOnlineMemberIdSnapshot() {
@@ -111,6 +111,8 @@ export function RoomWaitingClient({
 }: RoomWaitingClientProps) {
   const router = useRouter();
   const hasNavigatedRef = useRef(false);
+  const isMountedRef = useRef(false);
+  const isRefreshingRoomRef = useRef(false);
   const [room, setRoom] = useState(initialRoom);
   const [members, setMembers] = useState(initialMembers);
   const onlineMemberId = useSyncExternalStore(
@@ -161,6 +163,12 @@ export function RoomWaitingClient({
   );
 
   const refreshRoom = useCallback(async () => {
+    if (isRefreshingRoomRef.current) {
+      return;
+    }
+
+    isRefreshingRoomRef.current = true;
+
     try {
       const response = await fetch(`/api/online/rooms/${room.id}`, {
         cache: "no-store",
@@ -168,7 +176,15 @@ export function RoomWaitingClient({
       const result = (await response.json()) as RoomResponse;
 
       if (!response.ok || "error" in result) {
+        if (!isMountedRef.current) {
+          return;
+        }
+
         setError("error" in result ? result.error : "刷新房间信息失败。");
+        return;
+      }
+
+      if (!isMountedRef.current) {
         return;
       }
 
@@ -180,17 +196,41 @@ export function RoomWaitingClient({
         navigateToGameOnce(result.room.gameId);
       }
     } catch (caughtError) {
+      if (!isMountedRef.current) {
+        return;
+      }
+
       setError(
         caughtError instanceof Error ? caughtError.message : "刷新房间信息失败。",
       );
+    } finally {
+      isRefreshingRoomRef.current = false;
     }
   }, [navigateToGameOnce, room.id]);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (room.status === "playing" && room.gameId) {
       navigateToGameOnce(room.gameId);
     }
   }, [navigateToGameOnce, room.gameId, room.status]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      void refreshRoom();
+    }, 5000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [refreshRoom]);
 
   useEffect(() => {
     const supabase = createBrowserSupabaseClient();

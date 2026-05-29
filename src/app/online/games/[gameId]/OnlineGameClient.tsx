@@ -4,6 +4,7 @@ import Link from "next/link";
 import {
   useCallback,
   useEffect,
+  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -88,10 +89,10 @@ const daySubPhaseLabels: Record<DaySubPhase, string> = {
 };
 
 const realtimeStatusLabels: Record<RealtimeStatus, string> = {
-  connecting: "连接中",
-  connected: "已连接",
-  error: "连接异常",
-  disconnected: "已断开",
+  connecting: "连接中，自动刷新已启用",
+  connected: "实时连接正常",
+  error: "实时连接异常，已启用自动刷新",
+  disconnected: "已断开，已启用自动刷新",
 };
 
 function getOnlineMemberIdSnapshot() {
@@ -125,6 +126,8 @@ export function OnlineGameClient({
   initialVersion,
 }: OnlineGameClientProps) {
   const gameId = initialGame.id;
+  const isMountedRef = useRef(false);
+  const isRefreshingGameRef = useRef(false);
   const [game, setGame] = useState<OnlineClientGame>(initialGame);
   const [room, setRoom] = useState(initialRoom);
   const [version, setVersion] = useState(initialVersion);
@@ -193,6 +196,10 @@ export function OnlineGameClient({
   };
 
   const applyGameResponse = useCallback((result: OnlineGameResponse) => {
+    if (!isMountedRef.current) {
+      return;
+    }
+
     if ("error" in result) {
       setError(result.error);
       return;
@@ -207,6 +214,12 @@ export function OnlineGameClient({
   }, []);
 
   const refreshGame = useCallback(async () => {
+    if (isRefreshingGameRef.current) {
+      return;
+    }
+
+    isRefreshingGameRef.current = true;
+
     try {
       const response = await fetch(buildGameUrl(gameId, onlineMemberId), {
         cache: "no-store",
@@ -214,17 +227,35 @@ export function OnlineGameClient({
       const result = (await response.json()) as OnlineGameResponse;
 
       if (!response.ok || "error" in result) {
+        if (!isMountedRef.current) {
+          return;
+        }
+
         setError("error" in result ? result.error : "刷新游戏状态失败。");
         return;
       }
 
       applyGameResponse(result);
     } catch (caughtError) {
+      if (!isMountedRef.current) {
+        return;
+      }
+
       setError(
         caughtError instanceof Error ? caughtError.message : "刷新游戏状态失败。",
       );
+    } finally {
+      isRefreshingGameRef.current = false;
     }
   }, [applyGameResponse, gameId, onlineMemberId]);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     let isCancelled = false;
@@ -262,6 +293,16 @@ export function OnlineGameClient({
       isCancelled = true;
     };
   }, [applyGameResponse, gameId, onlineMemberId]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      void refreshGame();
+    }, 5000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [refreshGame]);
 
   useEffect(() => {
     const supabase = createBrowserSupabaseClient();
